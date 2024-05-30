@@ -150,8 +150,8 @@ public class CsoundUnityBridge
         Csound6.NativeMethods.csoundSetOption(csound, "-n");
         Csound6.NativeMethods.csoundSetOption(csound, "-d");
         Csound6.NativeMethods.csoundSetOption(csound, $"--sample-rate={AudioSettings.outputSampleRate}");
-        Csound6.NativeMethods.csoundSetOption(csound, $"--control-rate={AudioSettings.outputSampleRate}");
-        Csound6.NativeMethods.csoundSetOption(csound, $"--ksmps=1");
+        // Csound6.NativeMethods.csoundSetOption(csound, $"--control-rate={AudioSettings.outputSampleRate}");
+        Csound6.NativeMethods.csoundSetOption(csound, $"--ksmps=32");
 
 #if UNITY_IOS
         Debug.Log($"Initialising sample rate and control rate using Audio Project Settings value: {AudioSettings.outputSampleRate}Hz, some values maybe incompatible with older hardware.");
