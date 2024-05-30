@@ -385,7 +385,7 @@ public class CsoundUnity : MonoBehaviour
     /// The current preset name. If empty, no preset has been set.
     /// </summary>
     public string CurrentPreset => _currentPreset;
-    
+
     #endregion PUBLIC_FIELDS
 
     #region PRIVATE_FIELDS
@@ -399,42 +399,42 @@ public class CsoundUnity : MonoBehaviour
     /// fuctions, then methods should be added to the CsoundUnity.cs file and CsoundUnityBridge class.
     /// </summary>
     private CsoundUnityBridge csound;
-    [HideInInspector] [SerializeField] private string _csoundFileGUID;
-    [HideInInspector] [SerializeField] private string _csoundString;
-    [HideInInspector] [SerializeField] private string _csoundFileName;
+    [HideInInspector][SerializeField] private string _csoundFileGUID;
+    [HideInInspector][SerializeField] private string _csoundString;
+    [HideInInspector][SerializeField] private string _csoundFileName;
 #if UNITY_EDITOR
-    [HideInInspector] [SerializeField] private DefaultAsset _csoundAsset;
+    [HideInInspector][SerializeField] private DefaultAsset _csoundAsset;
 #endif
-    [HideInInspector] [SerializeField] private List<CsoundChannelController> _channels = new List<CsoundChannelController>();
+    [HideInInspector][SerializeField] private List<CsoundChannelController> _channels = new List<CsoundChannelController>();
     /// <summary>
     /// An utility dictionary to store the index of every channel in the _channels list
     /// </summary>
     private Dictionary<string, int> _channelsIndexDict = new Dictionary<string, int>();
-    [HideInInspector] [SerializeField] private List<string> _availableAudioChannels = new List<string>();
+    [HideInInspector][SerializeField] private List<string> _availableAudioChannels = new List<string>();
     /// <summary>
     /// Inspector foldout settings
     /// </summary>
 #pragma warning disable 414
-    [HideInInspector] [SerializeField] private bool _drawCsoundString = false;
-    [HideInInspector] [SerializeField] private bool _drawTestScore = false;
-    [HideInInspector] [SerializeField] private bool _drawSettings = false;
-    [HideInInspector] [SerializeField] private bool _drawChannels = false;
-    [HideInInspector] [SerializeField] private bool _drawAudioChannels = false;
-    [HideInInspector] [SerializeField] private bool _drawPresets = false;
-    [HideInInspector] [SerializeField] private bool _drawPresetsLoad = false;
-    [HideInInspector] [SerializeField] private bool _drawPresetsSave = false;
-    [HideInInspector] [SerializeField] private bool _drawPresetsImport = false;
+    [HideInInspector][SerializeField] private bool _drawCsoundString = false;
+    [HideInInspector][SerializeField] private bool _drawTestScore = false;
+    [HideInInspector][SerializeField] private bool _drawSettings = false;
+    [HideInInspector][SerializeField] private bool _drawChannels = false;
+    [HideInInspector][SerializeField] private bool _drawAudioChannels = false;
+    [HideInInspector][SerializeField] private bool _drawPresets = false;
+    [HideInInspector][SerializeField] private bool _drawPresetsLoad = false;
+    [HideInInspector][SerializeField] private bool _drawPresetsSave = false;
+    [HideInInspector][SerializeField] private bool _drawPresetsImport = false;
     /// <summary>
     /// If true, the path shown in the Csound Global Environments Folders inspector will be
     /// the one expected at runtime, otherwise it will show the Editor path (for desktop platform). 
     /// For mobile platforms the path will always be the same.
     /// </summary>
-    [HideInInspector] [SerializeField] private bool _showRuntimeEnvironmentPath = false;
-    [HideInInspector] [SerializeField] private string _currentPreset;
-    [HideInInspector] [SerializeField] private string _currentPresetSaveFolder;
-    [HideInInspector] [SerializeField] private string _currentPresetLoadFolder;
+    [HideInInspector][SerializeField] private bool _showRuntimeEnvironmentPath = false;
+    [HideInInspector][SerializeField] private string _currentPreset;
+    [HideInInspector][SerializeField] private string _currentPresetSaveFolder;
+    [HideInInspector][SerializeField] private string _currentPresetLoadFolder;
 
-    
+
 
 #pragma warning restore 414
 
@@ -1024,7 +1024,9 @@ public class CsoundUnity : MonoBehaviour
         if (_channelsIndexDict.ContainsKey(channelController.channel))
             channels[_channelsIndexDict[channelController.channel]] = channelController;
         if (csound == null) return;
-        csound.SetChannel(channelController.channel, channelController.value);
+        // Cabbage combobox index starts from 1
+        var value = channelController.type.Contains("combobox") ? channelController.value + 1 : channelController.value;
+        csound.SetChannel(channelController.channel, value);
     }
 
     /// <summary>
@@ -1982,7 +1984,7 @@ public class CsoundUnity : MonoBehaviour
         var name = $"{presetName} {GLOBAL_TAG}";
         var fullPath = CheckPathForExistence(path, name, overwriteIfExisting);
         try
-        {    
+        {
             Debug.Log($"Saving global preset at {fullPath}");
             File.WriteAllText(fullPath, presetData);
         }
