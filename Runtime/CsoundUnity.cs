@@ -1022,7 +1022,19 @@ public class CsoundUnity : MonoBehaviour
     public void SetChannel(CsoundChannelController channelController)
     {
         if (_channelsIndexDict.ContainsKey(channelController.channel))
+        {
+            var existingChannel = channels[_channelsIndexDict[channelController.channel]];
+            if (existingChannel.type.Contains("combobox"))
+            {
+                // preserve the combobox options
+                if (existingChannel.text != channelController.text)
+                {
+                    channelController.text = existingChannel.text;
+                    channelController.options = existingChannel.options;
+                }
+            }
             channels[_channelsIndexDict[channelController.channel]] = channelController;
+        }
         if (csound == null) return;
         // Cabbage combobox index starts from 1
         var value = channelController.type.Contains("combobox") ? channelController.value + 1 : channelController.value;
