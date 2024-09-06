@@ -172,6 +172,10 @@ public class CsoundUnityBridge
         const int LOG_NOTHING = 16;
         Csound6.NativeMethods.csoundSetMessageLevel(csound, LOG_NOTHING);
 
+        // double set to make sure -d -n are set
+        Csound6.NativeMethods.csoundSetOption(csound, "-n");
+        Csound6.NativeMethods.csoundSetOption(csound, "-d");
+
         Csound6.NativeMethods.csoundStart(csound);
 
         Debug.Log($"Csound created and started.\n" +
