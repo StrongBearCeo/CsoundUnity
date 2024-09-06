@@ -167,6 +167,11 @@ public class CsoundUnityBridge
         onCsoundCreated = null;
 
         int ret = Csound6.NativeMethods.csoundCompileCsdText(csound, csdFile);
+
+        const int LOG_ALL = 135;
+        const int LOG_NOTHING = 16;
+        Csound6.NativeMethods.csoundSetMessageLevel(csound, LOG_NOTHING);
+
         Csound6.NativeMethods.csoundStart(csound);
 
         Debug.Log($"Csound created and started.\n" +
@@ -174,14 +179,17 @@ public class CsoundUnityBridge
             $"GetSr: {GetSr()}\n" +
             $"GetKr: {GetKr()}\n" +
             $"Get0dbfs: {Get0dbfs()}\n" +
-            $"GetKsmps: {GetKsmps()}");
+            $"GetKsmps: {GetKsmps()}\n" +
+            $"GetMessageLevel: {Csound6.NativeMethods.csoundGetMessageLevel(csound)}"
+            );
+
         //var res = PerformKsmps();
         //Debug.Log($"PerformKsmps: {res}");
         compiledOk = ret == 0 ? true : false;
         //Debug.Log($"CsoundCompile: {compiledOk}");
     }
 
-#region Instantiation
+    #region Instantiation
 
 #if !UNITY_IOS
     public int LoadPlugins(string dir)
@@ -190,7 +198,7 @@ public class CsoundUnityBridge
     }
 #endif
 
-#endregion
+    #endregion
     public int GetVersion()
     {
         return Csound6.NativeMethods.csoundGetVersion();
