@@ -1933,7 +1933,7 @@ public class CsoundUnity : MonoBehaviour
     /// <param name="overwriteIfExisting"></param>
     public static void SavePresetAsJSON(CsoundUnityPreset preset, string path = null, bool overwriteIfExisting = false)
     {
-        var fullPath = CheckPathForExistence(path, preset.presetName, overwriteIfExisting);
+        var fullPath = CheckPathForExistence(path, preset.presetName + "_preset", overwriteIfExisting);
         var presetData = JsonUtility.ToJson(preset, true);
         try
         {

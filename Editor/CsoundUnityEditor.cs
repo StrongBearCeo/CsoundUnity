@@ -1,4 +1,4 @@
-﻿/*
+/*
 Copyright (C) 2015 Rory Walsh. 
 
 This file is part of CsoundUnity: https://github.com/rorywalsh/CsoundUnity
@@ -560,6 +560,8 @@ public class CsoundUnityEditor : Editor
 
     private void DrawPresetLoad()
     {
+        // Set the preset load folder to the current CSD folder /Presets
+        m_currentPresetLoadFolder.stringValue = GetPresetsFolder();
         m_drawPresetsLoad.boolValue = EditorGUILayout.Foldout(m_drawPresetsLoad.boolValue, "LOAD", true);
 
         if (m_drawPresetsLoad.boolValue)
@@ -658,6 +660,8 @@ public class CsoundUnityEditor : Editor
 
     private void DrawPresetsSave()
     {
+        // Set the preset save folder to the current CSD folder /Presets
+        m_currentPresetSaveFolder.stringValue = GetPresetsFolder();
         m_drawPresetsSave.boolValue = EditorGUILayout.Foldout(m_drawPresetsSave.boolValue, "SAVE", true);
 
         if (m_drawPresetsSave.boolValue)
@@ -732,9 +736,49 @@ public class CsoundUnityEditor : Editor
             EditorGUI.indentLevel++;
         }
     }
+    private string GetCsdPath()
+    {
+        if (csoundUnity == null || csoundUnity.csoundAsset == null)
+        {
+            Debug.LogError("CsoundUnity or csoundAsset is null");
+            return string.Empty;
+        }
 
+        string assetPath = AssetDatabase.GetAssetPath(csoundUnity.csoundAsset);
+        if (string.IsNullOrEmpty(assetPath))
+        {
+            Debug.LogError("Failed to get asset path for csoundAsset");
+            return string.Empty;
+        }
+
+        string directoryPath = Path.GetDirectoryName(assetPath);
+        if (string.IsNullOrEmpty(directoryPath))
+        {
+            Debug.LogError("Failed to get directory path from asset path");
+            return string.Empty;
+        }
+
+        return Path.GetFullPath(directoryPath);
+
+    }
+    private string GetPresetsFolder()
+    {
+        var csdPath = GetCsdPath();
+        if (string.IsNullOrEmpty(csdPath)) return string.Empty;
+        // Get the full path to the Presets folder
+        string presetsFolder = Path.GetFullPath(Path.Combine(csdPath, "Presets"));
+        // create the folder if it doesn't exist
+        if (!Directory.Exists(presetsFolder))
+        {
+            Directory.CreateDirectory(presetsFolder);
+        }
+        return presetsFolder;
+    }
     private void DrawPresetsImport()
     {
+        // Set current preset import folder to the same folder as the csd file
+        _currentPresetImportFolder = GetCsdPath();
+        _currentPresetImportFolderSave = GetPresetsFolder();
         m_drawPresetsImport.boolValue = EditorGUILayout.Foldout(m_drawPresetsImport.boolValue, "IMPORT", true);
 
         if (m_drawPresetsImport.boolValue)
