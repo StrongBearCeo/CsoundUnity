@@ -560,8 +560,6 @@ public class CsoundUnityEditor : Editor
 
     private void DrawPresetLoad()
     {
-        // Set the preset load folder to the current CSD folder /Presets
-        m_currentPresetLoadFolder.stringValue = GetPresetsFolder();
         m_drawPresetsLoad.boolValue = EditorGUILayout.Foldout(m_drawPresetsLoad.boolValue, "LOAD", true);
 
         if (m_drawPresetsLoad.boolValue)
@@ -596,6 +594,13 @@ public class CsoundUnityEditor : Editor
             if (GUILayout.Button("StreamingAssets"))
             {
                 m_currentPresetLoadFolder.stringValue = Application.streamingAssetsPath;
+                RefreshPresets();
+            }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Presets Folder"))
+            {
+                m_currentPresetLoadFolder.stringValue = GetPresetsFolder();
                 RefreshPresets();
             }
             EditorGUILayout.EndHorizontal();
@@ -660,8 +665,6 @@ public class CsoundUnityEditor : Editor
 
     private void DrawPresetsSave()
     {
-        // Set the preset save folder to the current CSD folder /Presets
-        m_currentPresetSaveFolder.stringValue = GetPresetsFolder();
         m_drawPresetsSave.boolValue = EditorGUILayout.Foldout(m_drawPresetsSave.boolValue, "SAVE", true);
 
         if (m_drawPresetsSave.boolValue)
@@ -693,6 +696,13 @@ public class CsoundUnityEditor : Editor
             if (GUILayout.Button("StreamingAssets"))
             {
                 m_currentPresetSaveFolder.stringValue = Application.streamingAssetsPath;
+                RefreshPresets();
+            }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Presets Folder"))
+            {
+                m_currentPresetSaveFolder.stringValue = GetPresetsFolder();
                 RefreshPresets();
             }
             EditorGUILayout.EndHorizontal();
@@ -776,27 +786,36 @@ public class CsoundUnityEditor : Editor
     }
     private void DrawPresetsImport()
     {
-        // Set current preset import folder to the same folder as the csd file
-        _currentPresetImportFolder = GetCsdPath();
-        _currentPresetImportFolderSave = GetPresetsFolder();
         m_drawPresetsImport.boolValue = EditorGUILayout.Foldout(m_drawPresetsImport.boolValue, "IMPORT", true);
 
         if (m_drawPresetsImport.boolValue)
         {
 
+            EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Select Cabbage Snaps folder to import"))
             {
                 _currentPresetImportFolder = EditorUtility.OpenFolderPanel("Select Cabbage snaps folder", _currentPresetImportFolder, "");
 
             }
+            if (GUILayout.Button("CSD Folder"))
+            {
+                _currentPresetImportFolder = GetCsdPath();
+            }
+            EditorGUILayout.EndHorizontal();
             EditorGUI.indentLevel--;
             EditorGUILayout.LabelField(new GUIContent($"Load from Folder: {_currentPresetImportFolder}", $"{_currentPresetImportFolder}"), EditorStyles.helpBox);// $"Save Folder: {m_currentPresetSaveFolder.stringValue}");
             EditorGUI.indentLevel++;
+            EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Select parsed presets destination folder"))
             {
                 _currentPresetImportFolderSave = EditorUtility.OpenFolderPanel("Select parsed presets destination folder", _currentPresetImportFolder, ""); ;
 
             }
+            if (GUILayout.Button("Presets Folder"))
+            {
+                _currentPresetImportFolderSave = GetPresetsFolder();
+            }
+            EditorGUILayout.EndHorizontal();
             EditorGUI.indentLevel--;
             EditorGUILayout.LabelField(new GUIContent($"Save into Folder: {_currentPresetImportFolderSave}", $"{_currentPresetImportFolderSave}"), EditorStyles.helpBox);// $"Save Folder: {m_currentPresetSaveFolder.stringValue}");
 
@@ -899,6 +918,9 @@ public class CsoundUnityEditor : Editor
     private void SetCsd(string guid)
     {
         csoundUnity.SetCsd(guid);
+        // Set current preset import folder to the same folder as the csd file
+        _currentPresetImportFolder = GetCsdPath();
+        _currentPresetImportFolderSave = GetPresetsFolder();
         EditorUtility.SetDirty(csoundUnity.gameObject);
         Repaint();
         EditorApplication.update += WaitOneFrameToUpdatePresets;

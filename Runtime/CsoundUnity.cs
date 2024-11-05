@@ -623,6 +623,9 @@ public class CsoundUnity : MonoBehaviour
         this._csoundAsset = (DefaultAsset)(AssetDatabase.LoadAssetAtPath(fileName, typeof(DefaultAsset)));
         this._csoundString = File.ReadAllText(csoundFilePath);
         this._channels = ParseCsdFile(fileName);
+        this._currentPresetLoadFolder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(fileName), "Presets"));
+        this._currentPresetSaveFolder = this._currentPresetLoadFolder;
+
         var count = 0;
         foreach (var chan in this._channels)
             if (!_channelsIndexDict.ContainsKey(chan.channel))
