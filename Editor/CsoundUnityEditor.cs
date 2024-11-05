@@ -46,6 +46,7 @@ public class CsoundUnityEditor : Editor
     SerializedProperty m_csoundString;
     SerializedProperty m_csoundScore;
     SerializedProperty m_processAudio;
+    SerializedProperty m_processMicrophone;
     SerializedProperty m_mute;
     SerializedProperty m_logCsoundOutput;
     SerializedProperty m_loudVolumeWarning;
@@ -90,6 +91,7 @@ public class CsoundUnityEditor : Editor
         m_csoundString = this.serializedObject.FindProperty("_csoundString");
         m_csoundScore = this.serializedObject.FindProperty("csoundScore");
         m_processAudio = this.serializedObject.FindProperty("processClipAudio");
+        m_processMicrophone = this.serializedObject.FindProperty("processMicrophone");
         m_mute = this.serializedObject.FindProperty("mute");
         m_logCsoundOutput = this.serializedObject.FindProperty("logCsoundOutput");
         m_loudVolumeWarning = this.serializedObject.FindProperty("loudVolumeWarning");
@@ -161,6 +163,24 @@ public class CsoundUnityEditor : Editor
         {
             EditorGUI.BeginChangeCheck();
             m_processAudio.boolValue = EditorGUILayout.Toggle("Process Clip Audio", m_processAudio.boolValue);
+            m_processMicrophone.boolValue = EditorGUILayout.Toggle(
+                new GUIContent(
+                    "Process Microphone",
+                    "If true Csound uses the microphone as an input. \n\n" +
+                    "For this to work, there must be one and only one CsoundUnityMicrophone component in the scene. \n\n" +
+                    "This component will share the microphone audio with all Csound instances via CsoundUnitySharedBuffer." +
+                    "\n\nProcess Clip Audio must be true for this to work." +
+                    "\n\nThe attached AudioSource should be set to loop = true and playOnAwake = true."
+                ),
+                m_processMicrophone.boolValue
+            );
+
+            // Show warning if invalid configuration
+            if (!m_processAudio.boolValue && m_processMicrophone.boolValue)
+            {
+                EditorGUILayout.HelpBox("Process Clip Audio must be enabled when using Process Microphone!", MessageType.Warning);
+            }
+
             if (EditorGUI.EndChangeCheck())
             {
                 csoundUnity.ClearSpin();

@@ -326,6 +326,11 @@ public class CsoundUnity : MonoBehaviour
     [HideInInspector] public bool processClipAudio;
 
     /// <summary>
+    /// If true Csound uses the microphone as an input
+    /// </summary>
+    [HideInInspector] public bool processMicrophone = false;
+
+    /// <summary>
     /// If true it will print warnings in the console when the output volume is too high, 
     /// and mute all the samples above the loudWarningThreshold value
     /// </summary>
@@ -2508,6 +2513,37 @@ public class CsoundUnity : MonoBehaviour
     /// <param name="numChannels"></param>
     private void ProcessBlock(float[] samples, int numChannels)
     {
+        if (processMicrophone)
+        {
+            // Read from shared buffer
+            if (CsoundUnitySharedBuffer.ReadBuffer(samples, samples.Length))
+            {
+                if (logCsoundOutput)
+                {
+                    // Calculate RMS (Root Mean Square)
+                    float rms = 0f;
+                    for (int i = 0; i < samples.Length; i++)
+                    {
+                        rms += samples[i] * samples[i];
+                    }
+                    rms = Mathf.Sqrt(rms / samples.Length);
+                    Debug.Log($"CsoundUnity reading {samples.Length} samples. RMS: {rms:F6}");
+                }
+            }
+            else
+            {
+                // Clear buffer if no data available
+                if (logCsoundOutput)
+                {
+                    Debug.Log($"CsoundUnity no data available. Clearing buffer.");
+                }
+                for (int i = 0; i < samples.Length; i++)
+                {
+                    samples[i] = 0f;
+                }
+            }
+        }
+
         if (compiledOk && initialized && !_quitting)
         {
             for (int i = 0; i < samples.Length; i += numChannels, ksmpsIndex++)
