@@ -147,8 +147,6 @@ public class CsoundUnityBridge
         Csound6.NativeMethods.csoundSetHostImplementedAudioIO(csound, 1, 0);
         Csound6.NativeMethods.csoundCreateMessageBuffer(csound, 0);
 
-        Csound6.NativeMethods.csoundSetOption(csound, "-n");
-        Csound6.NativeMethods.csoundSetOption(csound, "-d");
         Csound6.NativeMethods.csoundSetOption(csound, $"--sample-rate={AudioSettings.outputSampleRate}");
         // Csound6.NativeMethods.csoundSetOption(csound, $"--control-rate={AudioSettings.outputSampleRate}");
         Csound6.NativeMethods.csoundSetOption(csound, $"--ksmps=32");
@@ -158,10 +156,11 @@ public class CsoundUnityBridge
 #endif
 
         // This causes a crash in Unity >= 2021.3.28
-        //var parms = GetParams();
+        var parms = GetParams();
         //parms.control_rate_override = AudioSettings.outputSampleRate;
         //parms.sample_rate_override = AudioSettings.outputSampleRate;
         //SetParams(parms);
+        Debug.Log($"realtime_mode: {parms.realtime_mode}");
 
         onCsoundCreated?.Invoke();
         onCsoundCreated = null;
@@ -170,11 +169,12 @@ public class CsoundUnityBridge
 
         const int LOG_ALL = 135;
         const int LOG_NOTHING = 16;
-        Csound6.NativeMethods.csoundSetMessageLevel(csound, LOG_NOTHING);
+        Csound6.NativeMethods.csoundSetMessageLevel(csound, LOG_ALL);
 
         // double set to make sure -d -n are set
         Csound6.NativeMethods.csoundSetOption(csound, "-n");
         Csound6.NativeMethods.csoundSetOption(csound, "-d");
+        Csound6.NativeMethods.csoundSetOption(csound, "-iadc");
 
         Csound6.NativeMethods.csoundStart(csound);
 
