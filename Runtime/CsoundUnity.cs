@@ -438,6 +438,8 @@ public class CsoundUnity : MonoBehaviour
     [HideInInspector][SerializeField] private string _currentPreset;
     [HideInInspector][SerializeField] private string _currentPresetSaveFolder;
     [HideInInspector][SerializeField] private string _currentPresetLoadFolder;
+    [HideInInspector][SerializeField] private string _currentPresetImportFolder; 
+    [HideInInspector][SerializeField] private string _currentPresetImportFolderSave; 
 
 
 
@@ -630,6 +632,8 @@ public class CsoundUnity : MonoBehaviour
         this._channels = ParseCsdFile(fileName);
         this._currentPresetLoadFolder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(fileName), "Presets"));
         this._currentPresetSaveFolder = this._currentPresetLoadFolder;
+        this._currentPresetImportFolder = Path.GetFullPath(Path.GetDirectoryName(fileName));
+        this._currentPresetImportFolderSave = this._currentPresetImportFolder;
 
         var count = 0;
         foreach (var chan in this._channels)

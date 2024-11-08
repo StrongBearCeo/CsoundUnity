@@ -64,6 +64,8 @@ public class CsoundUnityEditor : Editor
     SerializedProperty m_showRuntimeEnvironmentPath;
     SerializedProperty m_currentPresetSaveFolder;
     SerializedProperty m_currentPresetLoadFolder;
+    SerializedProperty m_currentPresetImportFolder;
+    SerializedProperty m_currentPresetImportFolderSave;
     SerializedProperty m_drawPresetsLoad;
     SerializedProperty m_drawPresetsSave;
     SerializedProperty m_drawPresetsImport;
@@ -77,8 +79,6 @@ public class CsoundUnityEditor : Editor
     private string[] _jsonPresetsPaths;
     private List<CsoundUnityPreset> _assignablePresets;
     private int _assignablePresetsSpace = 5;
-    private string _currentPresetImportFolder;
-    private string _currentPresetImportFolderSave;
 
     void OnEnable()
     {
@@ -109,6 +109,8 @@ public class CsoundUnityEditor : Editor
         m_showRuntimeEnvironmentPath = this.serializedObject.FindProperty("_showRuntimeEnvironmentPath");
         m_currentPresetSaveFolder = this.serializedObject.FindProperty("_currentPresetSaveFolder");
         m_currentPresetLoadFolder = this.serializedObject.FindProperty("_currentPresetLoadFolder");
+        m_currentPresetImportFolder = this.serializedObject.FindProperty("_currentPresetImportFolder");
+        m_currentPresetImportFolderSave = this.serializedObject.FindProperty("_currentPresetImportFolderSave");
         m_drawPresetsLoad = this.serializedObject.FindProperty("_drawPresetsLoad");
         m_drawPresetsSave = this.serializedObject.FindProperty("_drawPresetsSave");
         m_drawPresetsImport = this.serializedObject.FindProperty("_drawPresetsImport");
@@ -660,6 +662,17 @@ public class CsoundUnityEditor : Editor
                 }
                 EditorGUILayout.EndHorizontal();
             }
+            EditorGUILayout.EndScrollView();
+            EditorGUILayout.Space();
+            if (GUILayout.Button("Convert All Presets to JSON"))
+            {
+                foreach (var preset in _assignablePresets)
+                {
+                    CsoundUnity.SavePresetAsJSON(preset, m_currentPresetLoadFolder.stringValue);
+                }
+                Debug.Log("All presets have been converted to JSON.");
+            }
+            EditorGUILayout.BeginScrollView(presetsScrollPos, GUILayout.Height(Mathf.Min(Mathf.Max(21, 21 * _assignablePresetsSpace), 420f)));
             EditorGUILayout.LabelField($"JSON Presets: ({_jsonPresetsPaths.Length})", EditorStyles.boldLabel);
             foreach (var path in _jsonPresetsPaths)
             {
@@ -810,42 +823,50 @@ public class CsoundUnityEditor : Editor
 
         if (m_drawPresetsImport.boolValue)
         {
+            if (string.IsNullOrWhiteSpace(m_currentPresetImportFolder.stringValue))
+            {
+                m_currentPresetImportFolder.stringValue = GetCsdPath();
+            }
+            if (string.IsNullOrWhiteSpace(m_currentPresetImportFolderSave.stringValue))
+            {
+                m_currentPresetImportFolderSave.stringValue = GetPresetsFolder();
+            }
 
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Select Cabbage Snaps folder to import"))
             {
-                _currentPresetImportFolder = EditorUtility.OpenFolderPanel("Select Cabbage snaps folder", _currentPresetImportFolder, "");
+                m_currentPresetImportFolder.stringValue = EditorUtility.OpenFolderPanel("Select Cabbage snaps folder", m_currentPresetImportFolder.stringValue, "");
 
             }
             if (GUILayout.Button("CSD Folder"))
             {
-                _currentPresetImportFolder = GetCsdPath();
+                m_currentPresetImportFolder.stringValue = GetCsdPath();
             }
             EditorGUILayout.EndHorizontal();
             EditorGUI.indentLevel--;
-            EditorGUILayout.LabelField(new GUIContent($"Load from Folder: {_currentPresetImportFolder}", $"{_currentPresetImportFolder}"), EditorStyles.helpBox);// $"Save Folder: {m_currentPresetSaveFolder.stringValue}");
+            EditorGUILayout.LabelField(new GUIContent($"Load from Folder: {m_currentPresetImportFolder.stringValue}", $"{m_currentPresetImportFolder.stringValue}"), EditorStyles.helpBox);// $"Save Folder: {m_currentPresetSaveFolder.stringValue}");
             EditorGUI.indentLevel++;
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Select parsed presets destination folder"))
             {
-                _currentPresetImportFolderSave = EditorUtility.OpenFolderPanel("Select parsed presets destination folder", _currentPresetImportFolder, ""); ;
+                m_currentPresetImportFolderSave.stringValue = EditorUtility.OpenFolderPanel("Select parsed presets destination folder", m_currentPresetImportFolder.stringValue, ""); ;
 
             }
             if (GUILayout.Button("Presets Folder"))
             {
-                _currentPresetImportFolderSave = GetPresetsFolder();
+                m_currentPresetImportFolderSave.stringValue = GetPresetsFolder();
             }
             EditorGUILayout.EndHorizontal();
             EditorGUI.indentLevel--;
-            EditorGUILayout.LabelField(new GUIContent($"Save into Folder: {_currentPresetImportFolderSave}", $"{_currentPresetImportFolderSave}"), EditorStyles.helpBox);// $"Save Folder: {m_currentPresetSaveFolder.stringValue}");
+            EditorGUILayout.LabelField(new GUIContent($"Save into Folder: {m_currentPresetImportFolderSave.stringValue}", $"{m_currentPresetImportFolderSave.stringValue}"), EditorStyles.helpBox);// $"Save Folder: {m_currentPresetSaveFolder.stringValue}");
 
             if (GUILayout.Button("IMPORT"))
             {
-                if (string.IsNullOrWhiteSpace(_currentPresetImportFolder))
+                if (string.IsNullOrWhiteSpace(m_currentPresetImportFolder.stringValue))
                 {
-                    _currentPresetImportFolder = Application.dataPath;
+                    m_currentPresetImportFolder.stringValue = Application.dataPath;
                 }
-                var files = Directory.GetFiles(_currentPresetImportFolder, "*.snaps", SearchOption.AllDirectories);
+                var files = Directory.GetFiles(m_currentPresetImportFolder.stringValue, "*.snaps", SearchOption.AllDirectories);
                 //Debug.Log($"Found {files.Length} files");
                 foreach (var file in files)
                 {
@@ -856,7 +877,7 @@ public class CsoundUnityEditor : Editor
                     //Debug.Log($"{presets.Count} presets read");
                     foreach (var preset in presets)
                     {
-                        CsoundUnity.WritePreset(preset, _currentPresetImportFolderSave);
+                        CsoundUnity.WritePreset(preset, m_currentPresetImportFolderSave.stringValue);
                     }
                 }
             }
@@ -938,9 +959,6 @@ public class CsoundUnityEditor : Editor
     private void SetCsd(string guid)
     {
         csoundUnity.SetCsd(guid);
-        // Set current preset import folder to the same folder as the csd file
-        _currentPresetImportFolder = GetCsdPath();
-        _currentPresetImportFolderSave = GetPresetsFolder();
         EditorUtility.SetDirty(csoundUnity.gameObject);
         Repaint();
         EditorApplication.update += WaitOneFrameToUpdatePresets;
