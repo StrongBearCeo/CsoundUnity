@@ -633,7 +633,7 @@ public class CsoundUnity : MonoBehaviour
         this._currentPresetLoadFolder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(fileName), "Presets"));
         this._currentPresetSaveFolder = this._currentPresetLoadFolder;
         this._currentPresetImportFolder = Path.GetFullPath(Path.GetDirectoryName(fileName));
-        this._currentPresetImportFolderSave = this._currentPresetImportFolder;
+        this._currentPresetImportFolderSave = this._currentPresetLoadFolder;
 
         var count = 0;
         foreach (var chan in this._channels)
