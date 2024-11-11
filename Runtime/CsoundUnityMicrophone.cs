@@ -30,6 +30,17 @@ public class CsoundUnityMicrophone : MonoBehaviour
     [SerializeField]
     [Tooltip("The name of the microphone device to use. It is set automatically according to the device index.")]
     private string m_MicrophoneDevice;
+    public string MicrophoneDevice
+    {
+        get
+        {
+            if (m_MicrophoneDeviceIndex >= 0 && m_MicrophoneDeviceIndex < Microphone.devices.Length)
+            {
+                m_MicrophoneDevice = Microphone.devices[m_MicrophoneDeviceIndex];
+            }
+            return m_MicrophoneDevice;
+        }
+    }
 
     [SerializeField]
     [Tooltip("The length of the Microphone recording buffer in seconds.")]
@@ -68,15 +79,23 @@ public class CsoundUnityMicrophone : MonoBehaviour
     {
         try
         {
+            // List all available microphones
+            string[] availableMicrophones = Microphone.devices;
+            if (availableMicrophones.Length > 0)
+            {
+                Debug.Log("Available Microphones:");
+                for (int i = 0; i < availableMicrophones.Length; i++)
+                {
+                    Debug.Log($"{i}: {availableMicrophones[i]}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning("No microphones found.");
+            }
             if (Microphone.devices.Length > 0)
             {
-                // Get the default microphone if no specific device is provided
-                if (m_MicrophoneDeviceIndex >= 0 && m_MicrophoneDeviceIndex < Microphone.devices.Length)
-                {
-                    m_MicrophoneDevice = Microphone.devices[m_MicrophoneDeviceIndex];
-                }
-
-                m_MicrophoneSource.clip = Microphone.Start(m_MicrophoneDevice, true, m_RecordLength, m_SampleRate);
+                m_MicrophoneSource.clip = Microphone.Start(MicrophoneDevice, true, m_RecordLength, m_SampleRate);
                 m_MicrophoneSource.Play();
                 m_MicrophoneSource.loop = true;
             }
@@ -96,7 +115,7 @@ public class CsoundUnityMicrophone : MonoBehaviour
     {
         if (m_LogProcessing)
         {
-            Debug.Log($"{m_SourceName} writing {data.Length} samples");
+            Debug.Log($"{m_SourceName} writing {data.Length} samples {channels} channels");
             // Calculate RMS (Root Mean Square)
             float rms = 0f;
             for (int i = 0; i < data.Length; i++)
