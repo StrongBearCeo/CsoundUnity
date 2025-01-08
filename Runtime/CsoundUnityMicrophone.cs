@@ -151,4 +151,22 @@ public class CsoundUnityMicrophone : MonoBehaviour
             }
         }
     }
+    public void SetMicrophoneDevice(int index)
+    {
+        if (m_MicrophoneDeviceIndex == index)
+        {
+            return;
+        }
+        if (index < 0 || index >= Microphone.devices.Length)
+        {
+            Debug.LogWarning($"Invalid microphone index: {index}. Total number of microphones: {Microphone.devices.Length}. Using default microphone.");
+            m_MicrophoneDeviceIndex = 0;
+        }
+        else
+        {
+            m_MicrophoneDeviceIndex = index;
+        }
+        m_MicrophoneDevice = Microphone.devices[index];
+        InitializeMicrophone();
+    }
 }
