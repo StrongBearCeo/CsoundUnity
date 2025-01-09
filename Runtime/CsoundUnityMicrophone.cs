@@ -166,7 +166,7 @@ public class CsoundUnityMicrophone : MonoBehaviour
         {
             m_MicrophoneDeviceIndex = index;
         }
-        m_MicrophoneDevice = Microphone.devices[index];
+        m_MicrophoneDevice = Microphone.devices[m_MicrophoneDeviceIndex];
         InitializeMicrophone();
     }
 }
