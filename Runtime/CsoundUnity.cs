@@ -331,6 +331,16 @@ public class CsoundUnity : MonoBehaviour
     [HideInInspector] public bool processMicrophone = false;
 
     /// <summary>
+    /// If true Csound write the audio output to the a buffer for another CsoundUnity instance to read
+    /// </summary>
+    [HideInInspector] public bool outputConnected = false;
+
+    /// <summary>
+    /// If true Csound read the audio input from a buffer written by another CsoundUnity instance
+    /// </summary>
+    [HideInInspector] public bool inputConnected = false;
+
+    /// <summary>
     /// If true it will print warnings in the console when the output volume is too high, 
     /// and mute all the samples above the loudWarningThreshold value
     /// </summary>
@@ -440,7 +450,8 @@ public class CsoundUnity : MonoBehaviour
     [HideInInspector][SerializeField] private string _currentPresetLoadFolder;
     [HideInInspector][SerializeField] private string _currentPresetImportFolder; 
     [HideInInspector][SerializeField] private string _currentPresetImportFolderSave; 
-
+    public CsoundUnityAudioBus audioBusOut = new CsoundUnityAudioBus();
+    public CsoundUnityAudioBus audioBusIn; // this is assigned when it is connected to another CsoundUnity instance
 
 
 #pragma warning restore 414
@@ -2548,6 +2559,37 @@ public class CsoundUnity : MonoBehaviour
             }
         }
 
+        if (inputConnected && audioBusIn != null)
+        {
+            // read from the input
+            if (audioBusIn.ReadBuffer(samples, samples.Length))
+            {
+                if (logCsoundOutput)
+                {
+                    // Calculate RMS (Root Mean Square)
+                    float rms = 0f;
+                    for (int i = 0; i < samples.Length; i++)
+                    {
+                        rms += samples[i] * samples[i];
+                    }
+                    rms = Mathf.Sqrt(rms / samples.Length);
+                    Debug.Log($"CsoundUnity reading {samples.Length} samples from input. RMS: {rms:F6}");
+                }
+            }
+            else
+            {
+                // Clear buffer if no data available
+                if (logCsoundOutput)
+                {
+                    Debug.Log($"CsoundUnity no data available from input. Clearing buffer.");
+                }
+                for (int i = 0; i < samples.Length; i++)
+                {
+                    samples[i] = 0f;
+                }
+            }
+        }
+
         if (compiledOk && initialized && !_quitting)
         {
             for (int i = 0; i < samples.Length; i += numChannels, ksmpsIndex++)
@@ -2603,6 +2645,12 @@ public class CsoundUnity : MonoBehaviour
                         namedAudioChannelDataDict[chanName][i / numChannels] = namedAudioChannelTempBufferDict[chanName][ksmpsIndex];
                     }
             }
+
+            // if (outputConnected)
+            // {
+                // send the samples to the output
+                audioBusOut.WriteBuffer(samples, samples.Length);
+            // }
         }
     }
 
