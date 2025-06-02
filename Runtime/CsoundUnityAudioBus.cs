@@ -31,4 +31,13 @@ public class CsoundUnityAudioBus
             return false;
         }
     }
+
+    public void ClearBuffer()
+    {
+        lock (s_BufferLock)
+        {
+            s_HasNewData = false;
+            s_BufferSize = 0;
+        }
+    }
 }

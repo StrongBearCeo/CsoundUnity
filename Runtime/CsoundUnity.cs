@@ -448,8 +448,8 @@ public class CsoundUnity : MonoBehaviour
     [HideInInspector][SerializeField] private string _currentPreset;
     [HideInInspector][SerializeField] private string _currentPresetSaveFolder;
     [HideInInspector][SerializeField] private string _currentPresetLoadFolder;
-    [HideInInspector][SerializeField] private string _currentPresetImportFolder; 
-    [HideInInspector][SerializeField] private string _currentPresetImportFolderSave; 
+    [HideInInspector][SerializeField] private string _currentPresetImportFolder;
+    [HideInInspector][SerializeField] private string _currentPresetImportFolderSave;
     public CsoundUnityAudioBus audioBusOut = new CsoundUnityAudioBus();
     public CsoundUnityAudioBus audioBusIn; // this is assigned when it is connected to another CsoundUnity instance
 
@@ -2648,8 +2648,8 @@ public class CsoundUnity : MonoBehaviour
 
             // if (outputConnected)
             // {
-                // send the samples to the output
-                audioBusOut.WriteBuffer(samples, samples.Length);
+            // send the samples to the output
+            audioBusOut.WriteBuffer(samples, samples.Length);
             // }
         }
     }
@@ -2725,6 +2725,11 @@ public class CsoundUnity : MonoBehaviour
         {
             csound.OnApplicationQuit();
         }
+    }
+
+    void OnDisable()
+    {
+        audioBusOut.ClearBuffer();
     }
 
     #endregion PRIVATE_METHODS
