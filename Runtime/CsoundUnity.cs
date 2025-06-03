@@ -320,6 +320,12 @@ public class CsoundUnity : MonoBehaviour
     [HideInInspector] public bool mute = false;
 
     /// <summary>
+    /// The output volume level for this CsoundUnity instance (0 = silent, 1 = full volume)
+    /// </summary>
+    [Range(0f, 1f)]
+    [HideInInspector] public float volume = 1f;
+
+    /// <summary>
     /// If true Csound uses as an input the AudioClip attached to this AudioSource
     /// If false, no processing occurs on the attached AudioClip
     /// </summary>
@@ -494,6 +500,7 @@ public class CsoundUnity : MonoBehaviour
         audioSource = GetComponent<AudioSource>();
         audioSource.spatializePostEffects = true;
         audioSource.spatialize = true;
+        audioSource.volume = 1f; // max pre-fader volume, actual volume is handled in OnAudioFilterRead
 
         // FIX SPATIALIZATION ISSUES
         if (audioSource.clip == null && !processClipAudio)
@@ -2602,41 +2609,37 @@ public class CsoundUnity : MonoBehaviour
                     // always remember OnAudioFilterRead runs on a different thread
                     if (_quitting) return;
 
-                    if (mute == true)
-                        samples[i + channel] = 0.0f;
-                    else
+                    if ((ksmpsIndex >= GetKsmps()) && (GetKsmps() > 0))
                     {
-                        if ((ksmpsIndex >= GetKsmps()) && (GetKsmps() > 0))
+                        var res = PerformKsmps();
+                        performanceFinished = res == 1;
+                        ksmpsIndex = 0;
+
+                        foreach (var chanName in availableAudioChannels)
                         {
-                            var res = PerformKsmps();
-                            performanceFinished = res == 1;
-                            ksmpsIndex = 0;
-
-                            foreach (var chanName in availableAudioChannels)
-                            {
-                                if (!namedAudioChannelTempBufferDict.ContainsKey(chanName)) continue;
-                                namedAudioChannelTempBufferDict[chanName] = GetAudioChannel(chanName);
-                            }
-                        }
-
-                        if (processClipAudio)
-                        {
-                            SetInputSample((int)ksmpsIndex, (int)channel, samples[i + channel] * (float)csound.Get0dbfs());
-                        }
-
-                        //if csound nChnls are more than the current channel, set the last csound channel available on the sample (assumes GetNchnls above 0)
-                        var outputSampleChannel = channel < GetNchnls() ? channel : GetNchnls() - 1;
-                        var output = (float)GetOutputSample((int)ksmpsIndex, (int)outputSampleChannel) / (float)csound.Get0dbfs();
-                        // multiply Csound output by the sample value to maintain spatialization set by Unity. 
-                        // don't multiply if reading from a clip: this should maintain the spatialization of the clip anyway
-                        samples[i + channel] = processClipAudio ? output : samples[i + channel] * output;
-
-                        if (loudVolumeWarning && (samples[i + channel] > loudWarningThreshold))
-                        {
-                            samples[i + channel] = 0.0f;
-                            Debug.LogWarning("Volume is too high! Clearing output");
+                            if (!namedAudioChannelTempBufferDict.ContainsKey(chanName)) continue;
+                            namedAudioChannelTempBufferDict[chanName] = GetAudioChannel(chanName);
                         }
                     }
+
+                    if (processClipAudio)
+                    {
+                        SetInputSample((int)ksmpsIndex, (int)channel, samples[i + channel] * (float)csound.Get0dbfs());
+                    }
+
+                    //if csound nChnls are more than the current channel, set the last csound channel available on the sample (assumes GetNchnls above 0)
+                    var outputSampleChannel = channel < GetNchnls() ? channel : GetNchnls() - 1;
+                    var output = (float)GetOutputSample((int)ksmpsIndex, (int)outputSampleChannel) / (float)csound.Get0dbfs();
+                    // multiply Csound output by the sample value to maintain spatialization set by Unity. 
+                    // don't multiply if reading from a clip: this should maintain the spatialization of the clip anyway
+                    samples[i + channel] = processClipAudio ? output : samples[i + channel] * output;
+
+                    if (loudVolumeWarning && (samples[i + channel] > loudWarningThreshold))
+                    {
+                        samples[i + channel] = 0.0f;
+                        Debug.LogWarning("Volume is too high! Clearing output");
+                    }
+
                 }
 
                 // update the audioChannels just when this instance is not muted
@@ -2651,8 +2654,25 @@ public class CsoundUnity : MonoBehaviour
             // if (outputConnected)
             // {
             // send the samples to the output
+            // the audio out is sent pre-fade, so it is not affected by the volume or mute
             audioBusOut.WriteBuffer(samples, samples.Length);
             // }
+
+            // handle mute and volume
+            if (mute || volume == 0f)
+            {
+                for (int i = 0; i < samples.Length; i++)
+                {
+                    samples[i] = 0.0f;
+                }
+            }
+            else if (volume != 1f)
+            {
+                for (int i = 0; i < samples.Length; i++)
+                {
+                    samples[i] *= volume;
+                }
+            }
         }
     }
 
