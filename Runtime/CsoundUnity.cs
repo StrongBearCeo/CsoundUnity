@@ -493,6 +493,7 @@ public class CsoundUnity : MonoBehaviour
 
         audioSource = GetComponent<AudioSource>();
         audioSource.spatializePostEffects = true;
+        audioSource.spatialize = true;
 
         // FIX SPATIALIZATION ISSUES
         if (audioSource.clip == null && !processClipAudio)
