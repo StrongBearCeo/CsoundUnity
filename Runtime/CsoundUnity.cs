@@ -2529,8 +2529,9 @@ public class CsoundUnity : MonoBehaviour
     /// <param name="numChannels"></param>
     private void ProcessBlock(float[] samples, int numChannels)
     {
-        if (processMicrophone)
+        if (processMicrophone && !inputConnected)
         {
+            // only read from the microphone if input is not connected
             // Read from shared buffer
             if (CsoundUnitySharedBuffer.ReadBuffer(samples, samples.Length))
             {
