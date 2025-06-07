@@ -67,6 +67,7 @@ public class CsoundUnityMicrophone : MonoBehaviour
     void Awake()
     {
         m_MicrophoneSource = GetComponent<AudioSource>();
+        m_MicrophoneDeviceIndex = PlayerPrefs.GetInt("MicSelectionIndex", 0);
     }
     void Start()
     {

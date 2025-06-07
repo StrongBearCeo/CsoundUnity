@@ -47,7 +47,9 @@ public class CsoundUnityEditor : Editor
     SerializedProperty m_csoundScore;
     SerializedProperty m_processAudio;
     SerializedProperty m_processMicrophone;
+    SerializedProperty m_inputConnected;
     SerializedProperty m_mute;
+    SerializedProperty m_volume;
     SerializedProperty m_logCsoundOutput;
     SerializedProperty m_loudVolumeWarning;
     SerializedProperty m_loudWarningThreshold;
@@ -92,7 +94,9 @@ public class CsoundUnityEditor : Editor
         m_csoundScore = this.serializedObject.FindProperty("csoundScore");
         m_processAudio = this.serializedObject.FindProperty("processClipAudio");
         m_processMicrophone = this.serializedObject.FindProperty("processMicrophone");
+        m_inputConnected = this.serializedObject.FindProperty("inputConnected");
         m_mute = this.serializedObject.FindProperty("mute");
+        m_volume = this.serializedObject.FindProperty("volume");
         m_logCsoundOutput = this.serializedObject.FindProperty("logCsoundOutput");
         m_loudVolumeWarning = this.serializedObject.FindProperty("loudVolumeWarning");
         m_loudWarningThreshold = this.serializedObject.FindProperty("loudWarningThreshold");
@@ -177,6 +181,8 @@ public class CsoundUnityEditor : Editor
                 m_processMicrophone.boolValue
             );
 
+            m_inputConnected.boolValue = EditorGUILayout.Toggle("Input Connected", m_inputConnected.boolValue);
+
             // Show warning if invalid configuration
             if (!m_processAudio.boolValue && m_processMicrophone.boolValue)
             {
@@ -188,6 +194,9 @@ public class CsoundUnityEditor : Editor
                 csoundUnity.ClearSpin();
             }
             m_mute.boolValue = EditorGUILayout.Toggle("Mute Csound", m_mute.boolValue);
+            // Volume slider
+            EditorGUILayout.Slider(m_volume, 0f, 1f, new GUIContent("Volume Level", "The output volume level for this CsoundUnity instance (0 = silent, 1 = full volume)"));
+
             m_logCsoundOutput.boolValue = EditorGUILayout.Toggle("Log Csound Output", m_logCsoundOutput.boolValue);
             m_loudVolumeWarning.boolValue = EditorGUILayout.Toggle("Loud Volume Warning", m_loudVolumeWarning.boolValue);
             if (m_loudVolumeWarning.boolValue)
