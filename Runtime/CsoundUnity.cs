@@ -2654,7 +2654,7 @@ public class CsoundUnity : MonoBehaviour
         {
             request.downloadHandler = new DownloadHandlerBuffer();
             yield return request.SendWebRequest();
-            if (request.isNetworkError || request.isHttpError)
+            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
             {
                 Debug.Log($"Couldn't load data at path: {path}: {request.error}");
                 onDataLoaded?.Invoke(null);
