@@ -675,6 +675,305 @@ public class CsoundUnity : MonoBehaviour
     }
 
     /// <summary>
+    /// Load CSD from string at runtime (for imported CSDs)
+    /// This method allows loading CSD content dynamically without requiring an asset file.
+    /// </summary>
+    /// <param name="csdContent">The CSD content as a string</param>
+    public void LoadCsdFromString(string csdContent)
+    {
+        if (string.IsNullOrWhiteSpace(csdContent))
+        {
+            Debug.LogError("LoadCsdFromString: CSD content is empty");
+            return;
+        }
+        
+        Debug.Log($"LoadCsdFromString: Loading CSD ({csdContent.Length} bytes)");
+        
+        try
+        {
+            // Store the CSD string
+            this._csoundString = csdContent;
+            
+            // Reinitialize Csound with the new content
+            // The InitializeCsound method will handle creating a new instance safely
+            Debug.Log("LoadCsdFromString: Calling InitializeCsound");
+            InitializeCsound();
+            
+            Debug.Log($"LoadCsdFromString: Complete - initialized={initialized}");
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"LoadCsdFromString: Failed - {ex.Message}\n{ex.StackTrace}");
+            initialized = false;
+            compiledOk = false;
+        }
+    }
+
+    /// <summary>
+    /// Initialize Csound with the current _csoundString
+    /// Called from Awake() and LoadCsdFromString()
+    /// </summary>
+    private void InitializeCsound()
+    {
+        try
+        {
+            // Safety check: verify _csoundString is not empty
+            if (string.IsNullOrWhiteSpace(_csoundString))
+            {
+                Debug.LogError("InitializeCsound: _csoundString is empty");
+                initialized = false;
+                compiledOk = false;
+                return;
+            }
+            
+            // CRITICAL: Don't try to cleanup existing csound instance
+            // The CsoundUnityBridge constructor will handle it
+            // Trying to cleanup here causes native crashes
+            
+            Debug.Log($"InitializeCsound: Creating CsoundUnityBridge with {_csoundString.Length} bytes");
+            
+            // Stop audio temporarily to prevent pops
+            if (audioSource != null && audioSource.isPlaying)
+            {
+                audioSource.Stop();
+            }
+            
+            // Create new CsoundUnityBridge instance
+            // The constructor will create a new Csound instance
+            csound = new CsoundUnityBridge(_csoundString, environmentSettings);
+            
+            if (csound != null)
+            {
+                // Parse channels from CSD
+                _channels = ParseCsdString(_csoundString);
+                
+                // Initialize channels
+                if (_channels != null)
+                {
+                    for (int i = 0; i < _channels.Count; i++)
+                    {
+                        if (_channels[i].type.Contains("combobox"))
+                            csound.SetChannel(_channels[i].channel, _channels[i].value + 1);
+                        else
+                            csound.SetChannel(_channels[i].channel, _channels[i].value);
+                        
+                        // Update channels index dictionary
+                        if (!_channelsIndexDict.ContainsKey(_channels[i].channel))
+                            _channelsIndexDict.Add(_channels[i].channel, i);
+                    }
+                }
+                
+                // Parse audio channels
+                _availableAudioChannels = ParseCsdStringForAudioChannels(_csoundString);
+                
+                foreach (var name in availableAudioChannels)
+                {
+                    if (!namedAudioChannelDataDict.ContainsKey(name))
+                    {
+                        namedAudioChannelDataDict.Add(name, new MYFLT[bufferSize]);
+                        namedAudioChannelTempBufferDict.Add(name, new MYFLT[ksmps]);
+                    }
+                }
+                
+                // Check compilation
+                compiledOk = csound.CompiledWithoutError();
+                
+                if (compiledOk)
+                {
+                    initialized = true;
+                    Debug.Log("InitializeCsound: Success - Csound initialized from string");
+                    
+                    // Restart audio after initialization
+                    if (audioSource != null)
+                    {
+                        audioSource.Play();
+                        Debug.Log("InitializeCsound: AudioSource restarted");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("InitializeCsound: Csound compilation failed");
+                    initialized = false;
+                }
+            }
+            else
+            {
+                Debug.LogError("InitializeCsound: Failed to create CsoundUnityBridge instance");
+                initialized = false;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"InitializeCsound: Failed - {ex.Message}\n{ex.StackTrace}");
+            initialized = false;
+        }
+    }
+
+    /// <summary>
+    /// Parse CSD from string (runtime version of ParseCsdFile)
+    /// </summary>
+    /// <param name="csdString">CSD content as string</param>
+    /// <returns>List of CsoundChannelController</returns>
+    private List<CsoundChannelController> ParseCsdString(string csdString)
+    {
+        // Try to parse from Cabbage descriptor first
+        var channelsFromCabbage = ParseCabbageDescriptorFromString(csdString);
+        if (channelsFromCabbage != null && channelsFromCabbage.Count > 0)
+        {
+            return channelsFromCabbage;
+        }
+        
+        // Fallback: return empty list (Classics-style CSDs have no controls)
+        return new List<CsoundChannelController>();
+    }
+
+    /// <summary>
+    /// Parse Cabbage descriptor from CSD string
+    /// Simplified version that extracts channel info from Cabbage widgets
+    /// </summary>
+    /// <param name="csdString">CSD content as string</param>
+    /// <returns>List of CsoundChannelController</returns>
+    private List<CsoundChannelController> ParseCabbageDescriptorFromString(string csdString)
+    {
+        try
+        {
+            // Extract Cabbage section
+            int cabbageStart = csdString.IndexOf("<Cabbage>");
+            int cabbageEnd = csdString.IndexOf("</Cabbage>");
+            
+            if (cabbageStart == -1 || cabbageEnd == -1)
+            {
+                return null; // No Cabbage section
+            }
+            
+            string cabbageContent = csdString.Substring(cabbageStart, cabbageEnd - cabbageStart + 10);
+            string[] lines = cabbageContent.Split('\n');
+            
+            var channels = new List<CsoundChannelController>();
+            
+            foreach (string line in lines)
+            {
+                string trimmd = line.TrimStart();
+                
+                // Skip comments
+                if (trimmd.StartsWith(";"))
+                    continue;
+                
+                // Check if it's a control widget
+                var controlIndex = trimmd.IndexOf("slider") > -1 ? "slider" :
+                                   trimmd.IndexOf("button") > -1 ? "button" :
+                                   trimmd.IndexOf("checkbox") > -1 ? "checkbox" :
+                                   trimmd.IndexOf("combobox") > -1 ? "combobox" : null;
+                
+                if (controlIndex == null)
+                    continue;
+                
+                var controller = new CsoundChannelController();
+                controller.type = controlIndex;
+                
+                // Extract channel name
+                if (trimmd.IndexOf("channel(") > -1)
+                {
+                    int channelStart = trimmd.IndexOf("channel(") + 9;
+                    int channelEnd = trimmd.IndexOf(")", channelStart);
+                    if (channelEnd > channelStart)
+                    {
+                        string channel = trimmd.Substring(channelStart, channelEnd - channelStart);
+                        channel = channel.Replace("\"", "").Replace("'", "");
+                        controller.channel = channel;
+                    }
+                }
+                
+                // Extract range if present
+                if (trimmd.IndexOf("range(") > -1 && controlIndex != "button")
+                {
+                    int rangeStart = trimmd.IndexOf("range(") + 6;
+                    int rangeEnd = trimmd.IndexOf(")", rangeStart);
+                    if (rangeEnd > rangeStart)
+                    {
+                        string range = trimmd.Substring(rangeStart, rangeEnd - rangeStart);
+                        string[] tokens = range.Split(',');
+                        if (tokens.Length >= 2)
+                        {
+                            float min = float.Parse(tokens[0].Trim(), CultureInfo.InvariantCulture);
+                            float max = float.Parse(tokens[1].Trim(), CultureInfo.InvariantCulture);
+                            float value = tokens.Length > 2 ? float.Parse(tokens[2].Trim(), CultureInfo.InvariantCulture) : min;
+                            float skew = tokens.Length > 3 ? float.Parse(tokens[3].Trim(), CultureInfo.InvariantCulture) : 1f;
+                            float increment = tokens.Length > 4 ? float.Parse(tokens[4].Trim(), CultureInfo.InvariantCulture) : 0.01f;
+                            
+                            controller.SetRange(min, max, value, skew, increment);
+                        }
+                    }
+                }
+                else if (controlIndex == "button")
+                {
+                    controller.SetRange(0, 1, 0);
+                }
+                
+                // Extract text/caption
+                if (trimmd.IndexOf("text(") > -1)
+                {
+                    int textStart = trimmd.IndexOf("text(") + 6;
+                    int textEnd = trimmd.IndexOf(")", textStart);
+                    if (textEnd > textStart)
+                    {
+                        string text = trimmd.Substring(textStart, textEnd - textStart);
+                        controller.text = text.Replace("\"", "").Replace("'", "");
+                    }
+                }
+                
+                if (!string.IsNullOrEmpty(controller.channel))
+                {
+                    channels.Add(controller);
+                }
+            }
+            
+            return channels;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"ParseCabbageDescriptorFromString: Error - {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parse audio channels from CSD string (runtime version)
+    /// </summary>
+    /// <param name="csdString">CSD content as string</param>
+    /// <returns>List of audio channel names</returns>
+    private List<string> ParseCsdStringForAudioChannels(string csdString)
+    {
+        // Simple regex-based parsing for audio channels
+        var audioChannels = new List<string>();
+        
+        try
+        {
+            // Look for chnexport opcodes
+            string pattern = @"chnexport\s+""([^""]+)""";
+            var matches = System.Text.RegularExpressions.Regex.Matches(csdString, pattern);
+            
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                if (match.Groups.Count > 1)
+                {
+                    string channelName = match.Groups[1].Value;
+                    if (!string.IsNullOrWhiteSpace(channelName) && !audioChannels.Contains(channelName))
+                    {
+                        audioChannels.Add(channelName);
+                    }
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"ParseCsdStringForAudioChannels: Error - {ex.Message}");
+        }
+        
+        return audioChannels;
+    }
+
+    /// <summary>
     /// Parse, and compile the given orchestra from an ASCII string,
     /// also evaluating any global space code (i-time only)
     /// this can be called during performance to compile a new orchestra.
@@ -2702,7 +3001,7 @@ public class CsoundUnity : MonoBehaviour
                 {
                     if (this.logCsoundOutput)    // exiting when csound messages are very high in number 
                     {
-                        print(csound.GetCsoundMessage());
+                        print("CsoundUnity output: " + csound.GetCsoundMessage());
                         yield return null;          //avoids Unity stuck on performance end
                     }
                 }
