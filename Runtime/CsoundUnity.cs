@@ -420,6 +420,7 @@ public class CsoundUnity : MonoBehaviour
     /// fuctions, then methods should be added to the CsoundUnity.cs file and CsoundUnityBridge class.
     /// </summary>
     private CsoundUnityBridge csound;
+    private bool awakeCompleted;
     [HideInInspector][SerializeField] private string _csoundFileGUID;
     [HideInInspector][SerializeField] private string _csoundString;
     [HideInInspector][SerializeField] private string _csoundFileName;
@@ -491,6 +492,7 @@ public class CsoundUnity : MonoBehaviour
     void Awake()
     {
         initialized = false;
+        awakeCompleted = false;
 
         AudioSettings.GetDSPBufferSize(out bufferSize, out numBuffers);
 
@@ -566,6 +568,7 @@ public class CsoundUnity : MonoBehaviour
         }
 
         Debug.Log($"CsoundUnity done init, compiledOk? {compiledOk}");
+        awakeCompleted = true;
     }
 
     #region PUBLIC_METHODS
@@ -693,9 +696,18 @@ public class CsoundUnity : MonoBehaviour
         {
             // Store the CSD string
             this._csoundString = csdContent;
-            
-            // Reinitialize Csound with the new content
-            // The InitializeCsound method will handle creating a new instance safely
+
+            _channels = ParseCsdString(_csoundString);
+            _availableAudioChannels = ParseCsdStringForAudioChannels(_csoundString);
+
+            if (!awakeCompleted)
+            {
+                Debug.Log("LoadCsdFromString: Stored CSD for deferred Awake initialization");
+                return;
+            }
+
+            // Reinitialize Csound with the new content when this instance is already awake.
+            // Imported runtime sounds call this before Awake so native initialization happens once.
             Debug.Log("LoadCsdFromString: Calling InitializeCsound");
             InitializeCsound();
             
