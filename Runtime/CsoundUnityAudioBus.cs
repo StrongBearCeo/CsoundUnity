@@ -1,43 +1,73 @@
+// Audio bus for passing audio data between components.
+// Uses a lock-free double-buffer pattern instead of locks.
+//
+// Writer (OnAudioFilterRead) writes to the back buffer, then atomically swaps.
+// Reader (OnAudioFilterRead) reads from the front buffer.
+// No locks — avoids priority inversion on the audio thread.
+
+using System.Threading;
+
 public class CsoundUnityAudioBus
 {
-    private readonly object s_BufferLock = new object();
-    private float[] s_Buffer = new float[8192];  // Initial size
+    private float[] s_FrontBuffer;  // Reader reads from this
+    private float[] s_BackBuffer;    // Writer writes to this
     private int s_BufferSize = 0;
-    private bool s_HasNewData = false;
+    private volatile bool s_HasNewData = false;
 
+    public CsoundUnityAudioBus()
+    {
+        s_FrontBuffer = new float[8192];
+        s_BackBuffer = new float[8192];
+    }
+
+    /// <summary>
+    /// Write data to the bus. Called from the audio thread (single producer).
+    /// Writes to the back buffer, then atomically swaps front and back.
+    /// </summary>
     public void WriteBuffer(float[] data, int length)
     {
-        lock (s_BufferLock)
+        // Grow back buffer if needed (no allocations on subsequent calls with same size)
+        if (s_BackBuffer.Length < length)
         {
-            if (s_Buffer.Length < length)
-            {
-                s_Buffer = new float[length];
-            }
-            System.Array.Copy(data, s_Buffer, length);
-            s_BufferSize = length;
-            s_HasNewData = true;
+            s_BackBuffer = new float[length];
         }
+
+        // Copy data into back buffer
+        System.Array.Copy(data, s_BackBuffer, length);
+
+        // Swap: back becomes front, front becomes back
+        // Thread-safe because reader only accesses front buffer, and we only
+        // swap after the copy is complete. The volatile write of s_HasNewData
+        // ensures the swap is visible before the flag.
+        var temp = s_FrontBuffer;
+        s_FrontBuffer = s_BackBuffer;
+        s_BackBuffer = temp;
+
+        s_BufferSize = length;
+        Volatile.Write(ref s_HasNewData, true);
     }
 
+    /// <summary>
+    /// Read data from the bus. Called from the audio thread (single consumer).
+    /// Only returns data if new data is available and the buffer size matches.
+    /// </summary>
     public bool ReadBuffer(float[] data, int length)
     {
-        lock (s_BufferLock)
+        if (Volatile.Read(ref s_HasNewData) && s_BufferSize == length)
         {
-            if (s_HasNewData && s_BufferSize == length)
-            {
-                System.Array.Copy(s_Buffer, data, length);
-                return true;
-            }
-            return false;
+            System.Array.Copy(s_FrontBuffer, data, length);
+            s_HasNewData = false;
+            return true;
         }
+        return false;
     }
 
+    /// <summary>
+    /// Clear the buffer, marking it as having no new data.
+    /// </summary>
     public void ClearBuffer()
     {
-        lock (s_BufferLock)
-        {
-            s_HasNewData = false;
-            s_BufferSize = 0;
-        }
+        s_HasNewData = false;
+        s_BufferSize = 0;
     }
 }
