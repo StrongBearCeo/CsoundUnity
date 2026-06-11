@@ -13,6 +13,7 @@ public class CsoundUnityAudioBus
     private float[] s_BackBuffer;    // Writer writes to this
     private int s_BufferSize = 0;
     private volatile bool s_HasNewData = false;
+    private int s_WriteVersion = 0;  // bumped on every write; lets extra readers Peek without consuming
 
     public CsoundUnityAudioBus()
     {
@@ -45,6 +46,25 @@ public class CsoundUnityAudioBus
 
         s_BufferSize = length;
         Volatile.Write(ref s_HasNewData, true);
+        Interlocked.Increment(ref s_WriteVersion);
+    }
+
+    /// <summary>
+    /// Non-consuming read for ADDITIONAL observers (e.g. the sampler recording this
+    /// bus while it also feeds a connected instrument). Unlike <see cref="ReadBuffer"/>
+    /// it does NOT clear the new-data flag, so the primary consumer is unaffected.
+    /// Each observer keeps its own <paramref name="lastVersion"/> cursor; a block is
+    /// delivered at most once per observer.
+    /// Returns the number of samples copied (0 when nothing new or size mismatch).
+    /// </summary>
+    public int PeekBuffer(float[] data, int length, ref int lastVersion)
+    {
+        int v = Volatile.Read(ref s_WriteVersion);
+        if (v == lastVersion) return 0;
+        lastVersion = v;
+        if (s_BufferSize != length) return 0;
+        System.Array.Copy(s_FrontBuffer, data, length);
+        return length;
     }
 
     /// <summary>
