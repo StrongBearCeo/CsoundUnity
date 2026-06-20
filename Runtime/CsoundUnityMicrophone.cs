@@ -65,49 +65,63 @@ public class CsoundUnityMicrophone : MonoBehaviour
     private bool m_IsMuted = true;
 
     /// <summary>
-    /// When true, the native low-latency audio engine handles mic input.
-    /// OnAudioFilterRead writes silence to the shared buffer and zeroes the
-    /// output data so the Unity mic pipeline is cleanly bypassed.
+    /// Refcount of callers that want the native low-latency engine to own the mic.
+    /// Multiple native users (LiveFxController, MicInstrument, MicMonitorHub) may
+    /// request native mode concurrently and release in any order, so a plain bool
+    /// is wrong: a caller that released while another still held the engine could
+    /// never clear the flag (its SetNativeMode(false) was gated on the engine being
+    /// idle), leaving the mic permanently handed to native &rarr; the Unity mic
+    /// pipeline silent for the whole session. Refcounting makes the handoff
+    /// last-user-wins and order-independent: the OS mic is released on the first
+    /// <c>true</c> (0&rarr;1) and reacquired on the last <c>false</c> (1&rarr;0).
     /// </summary>
-    private bool m_NativeMode = false;
+    private int m_NativeModeRefs = 0;
 
     /// <summary>
     /// Switch between native low-latency mode and the standard Unity mic path.
-    /// When <paramref name="active"/> is true, mic capture pauses and
-    /// OnAudioFilterRead emits silence; when false, normal mic capture resumes.
+    /// Refcounted: the FIRST caller to activate releases the OS mic to the native
+    /// engine; the LAST caller to deactivate reacquires it for Unity. Intermediate
+    /// calls are no-ops on the device but always adjust the ref so callers can
+    /// pair <c>true</c>/<c>false</c> regardless of engine state or leave order.
     /// </summary>
-    /// <param name="active">True to activate native mode (pause Unity mic), false to deactivate.</param>
+    /// <param name="active">True to add a native-mode ref (release Unity mic if first),
+    /// false to drop a ref (reacquire Unity mic if last).</param>
     public void SetNativeMode(bool active)
     {
-        m_NativeMode = active;
         if (active)
         {
-            // FULLY RELEASE the OS microphone. Pausing the AudioSource is not enough:
-            // Microphone.Start keeps the capture device open, so the native Oboe input
-            // (exclusive low-latency) can't acquire the mic and captures silence.
-            // We must Microphone.End() to hand the device to the native engine.
-            if (m_MicrophoneSource != null)
+            if (m_NativeModeRefs++ == 0)
             {
-                m_MicrophoneSource.Stop();
-                m_MicrophoneSource.clip = null;
+                // FULLY RELEASE the OS microphone. Pausing the AudioSource is not enough:
+                // Microphone.Start keeps the capture device open, so the native Oboe/WASAPI
+                // input (low-latency) can't acquire the mic and captures silence.
+                // We must Microphone.End() to hand the device to the native engine.
+                if (m_MicrophoneSource != null)
+                {
+                    m_MicrophoneSource.Stop();
+                    m_MicrophoneSource.clip = null;
+                }
+                try
+                {
+                    var dev = MicrophoneDevice;
+                    if (!string.IsNullOrEmpty(dev) && Microphone.IsRecording(dev))
+                        Microphone.End(dev);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[CsoundUnityMicrophone] Microphone.End failed: {e.Message}");
+                }
+                Debug.Log("[CsoundUnityMicrophone] Native mode activated — Unity mic released for native capture.");
             }
-            try
-            {
-                var dev = MicrophoneDevice;
-                if (!string.IsNullOrEmpty(dev) && Microphone.IsRecording(dev))
-                    Microphone.End(dev);
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[CsoundUnityMicrophone] Microphone.End failed: {e.Message}");
-            }
-            Debug.Log("[CsoundUnityMicrophone] Native mode activated — Unity mic released for native capture.");
         }
         else
         {
-            // Re-acquire the OS mic for the Unity pipeline.
-            InitializeMicrophone();
-            Debug.Log("[CsoundUnityMicrophone] Native mode deactivated — Unity mic resumed.");
+            if (m_NativeModeRefs > 0 && --m_NativeModeRefs == 0)
+            {
+                // Re-acquire the OS mic for the Unity pipeline (last native user left).
+                InitializeMicrophone();
+                Debug.Log("[CsoundUnityMicrophone] Native mode deactivated — Unity mic resumed.");
+            }
         }
     }
 
@@ -161,11 +175,12 @@ public class CsoundUnityMicrophone : MonoBehaviour
 
     void OnAudioFilterRead(float[] data, int channels)
     {
-        // When native mode is active, the low-latency plugin handles audio I/O.
-        // Do NOT write to CsoundUnitySharedBuffer — the LiveFxRecordingTap writes
-        // to a separate LiveFxRecordingBuffer instead. Just zero the output so
-        // Unity's audio pipeline is cleanly bypassed without producing double audio.
-        if (m_NativeMode)
+        // When native mode is active (any caller holds a ref), the low-latency plugin
+        // handles audio I/O. Do NOT write to CsoundUnitySharedBuffer — the
+        // LiveFxRecordingTap writes to a separate LiveFxRecordingBuffer instead.
+        // Just zero the output so Unity's audio pipeline is cleanly bypassed without
+        // producing double audio.
+        if (m_NativeModeRefs > 0)
         {
             for (int i = 0; i < data.Length; i++)
             {
