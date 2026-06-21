@@ -77,6 +77,13 @@ public class CsoundUnityMicrophone : MonoBehaviour
     /// </summary>
     private int m_NativeModeRefs = 0;
 
+    /// <summary>Current native-mode refcount. Lets a caller detect the 0&rarr;1
+    /// transition (it is about to release Unity's mic to the native engine) and
+    /// the 1&rarr;0 transition (it is about to take the mic back). Read BEFORE
+    /// calling <see cref="SetNativeMode"/> to know whether this call is the one
+    /// that flips the device.</summary>
+    public int NativeModeRefCount => m_NativeModeRefs;
+
     /// <summary>
     /// Switch between native low-latency mode and the standard Unity mic path.
     /// Refcounted: the FIRST caller to activate releases the OS mic to the native
