@@ -424,6 +424,7 @@ public class CsoundUnity : MonoBehaviour
     [HideInInspector][SerializeField] private string _csoundFileGUID;
     [HideInInspector][SerializeField] private string _csoundString;
     [HideInInspector][SerializeField] private string _csoundFileName;
+    [NonSerialized] private string _runtimeCsdFilePath;
 #if UNITY_EDITOR
     [HideInInspector][SerializeField] private DefaultAsset _csoundAsset;
 #endif
@@ -520,7 +521,10 @@ public class CsoundUnity : MonoBehaviour
         /// the CsoundUnityBridge constructor the string with the csound code and a list of the Global Environment Variables Settings.
         /// It then calls createCsound() to create an instance of Csound and compile the csd string.
         /// After this we start the performance of Csound.
-        csound = new CsoundUnityBridge(_csoundString, environmentSettings);
+        csound = new CsoundUnityBridge(
+            string.IsNullOrWhiteSpace(_runtimeCsdFilePath) ? _csoundString : _runtimeCsdFilePath,
+            environmentSettings,
+            !string.IsNullOrWhiteSpace(_runtimeCsdFilePath));
         if (csound != null)
         {
             /// channels are created when a csd file is selected in the inspector
@@ -651,6 +655,7 @@ public class CsoundUnity : MonoBehaviour
         var csoundFilePath = Path.GetFullPath(fileName);
         this._csoundAsset = (DefaultAsset)(AssetDatabase.LoadAssetAtPath(fileName, typeof(DefaultAsset)));
         this._csoundString = File.ReadAllText(csoundFilePath);
+        this._runtimeCsdFilePath = null;
         this._channels = ParseCsdFile(fileName);
         this._currentPresetLoadFolder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(fileName), "Presets"));
         this._currentPresetSaveFolder = this._currentPresetLoadFolder;
@@ -696,6 +701,7 @@ public class CsoundUnity : MonoBehaviour
         {
             // Store the CSD string
             this._csoundString = csdContent;
+            this._runtimeCsdFilePath = null;
 
             _channels = ParseCsdString(_csoundString);
             _availableAudioChannels = ParseCsdStringForAudioChannels(_csoundString);
@@ -716,6 +722,49 @@ public class CsoundUnity : MonoBehaviour
         catch (System.Exception ex)
         {
             Debug.LogError($"LoadCsdFromString: Failed - {ex.Message}\n{ex.StackTrace}");
+            initialized = false;
+            compiledOk = false;
+        }
+    }
+
+    /// <summary>
+    /// Load a runtime CSD from its real path so relative file references are
+    /// resolved from the directory containing the CSD.
+    /// </summary>
+    public void LoadCsdFromFile(string csdFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(csdFilePath) || !File.Exists(csdFilePath))
+        {
+            Debug.LogError($"LoadCsdFromFile: CSD file not found: {csdFilePath}");
+            return;
+        }
+
+        try
+        {
+            string fullPath = Path.GetFullPath(csdFilePath);
+            string csdContent = File.ReadAllText(fullPath);
+            if (string.IsNullOrWhiteSpace(csdContent))
+            {
+                Debug.LogError($"LoadCsdFromFile: CSD file is empty: {fullPath}");
+                return;
+            }
+
+            _runtimeCsdFilePath = fullPath;
+            _csoundFileName = Path.GetFileName(fullPath);
+            _csoundString = csdContent;
+            _channels = ParseCsdString(_csoundString);
+            _availableAudioChannels = ParseCsdStringForAudioChannels(_csoundString);
+
+            if (!awakeCompleted)
+            {
+                Debug.Log($"LoadCsdFromFile: Stored {fullPath} for deferred Awake initialization");
+                return;
+            }
+            InitializeCsound();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"LoadCsdFromFile failed: {ex.Message}\n{ex.StackTrace}");
             initialized = false;
             compiledOk = false;
         }
@@ -752,7 +801,10 @@ public class CsoundUnity : MonoBehaviour
             
             // Create new CsoundUnityBridge instance
             // The constructor will create a new Csound instance
-            csound = new CsoundUnityBridge(_csoundString, environmentSettings);
+            csound = new CsoundUnityBridge(
+                string.IsNullOrWhiteSpace(_runtimeCsdFilePath) ? _csoundString : _runtimeCsdFilePath,
+                environmentSettings,
+                !string.IsNullOrWhiteSpace(_runtimeCsdFilePath));
             
             if (csound != null)
             {
@@ -3035,6 +3087,7 @@ public class CsoundUnity : MonoBehaviour
 
         this._csoundFileName = null;
         this._csoundString = null;
+        this._runtimeCsdFilePath = null;
         this._csoundFileGUID = string.Empty;
 
         this._channels.Clear();

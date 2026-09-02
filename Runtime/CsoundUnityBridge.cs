@@ -114,7 +114,7 @@ public class CsoundUnityBridge
     /// </summary>
     /// <param name="csdFile">The Csound (.csd) file content as a string</param>
     /// <param name="environmentSettings">A list of the Csound Environments settings defined by the user</param>
-    public CsoundUnityBridge(string csdFile, List<EnvironmentSettings> environmentSettings)
+    public CsoundUnityBridge(string csdFile, List<EnvironmentSettings> environmentSettings, bool compileFromFile = false)
     {
         // On editor and desktop platforms, disable searching of plugins unless explicitly set using
         // the env settings in the editor
@@ -166,7 +166,9 @@ public class CsoundUnityBridge
         onCsoundCreated?.Invoke();
         onCsoundCreated = null;
 
-        int ret = Csound6.NativeMethods.csoundCompileCsdText(csound, csdFile);
+        int ret = compileFromFile
+            ? Csound6.NativeMethods.csoundCompileCsd(csound, csdFile)
+            : Csound6.NativeMethods.csoundCompileCsdText(csound, csdFile);
 
         const int LOG_ALL = 135;
         const int LOG_NOTHING = 16;
