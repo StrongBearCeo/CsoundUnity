@@ -313,6 +313,13 @@ public class CsoundUnity : MonoBehaviour
     /// lot of information being printed.
     /// </summary>
     [HideInInspector] public bool logCsoundOutput = false;
+    public event Action<string> CsoundMessageLogged;
+
+    public void SetCsoundOutputLogging(bool enabled)
+    {
+        logCsoundOutput = enabled;
+        csound?.SetMessageOutputEnabled(enabled);
+    }
 
     /// <summary>
     /// If true no audio is sent to output
@@ -527,6 +534,7 @@ public class CsoundUnity : MonoBehaviour
             !string.IsNullOrWhiteSpace(_runtimeCsdFilePath));
         if (csound != null)
         {
+            SetCsoundOutputLogging(logCsoundOutput);
             /// channels are created when a csd file is selected in the inspector
             if (channels != null)
                 // initialise channels if found in xml descriptor..
@@ -3061,13 +3069,13 @@ public class CsoundUnity : MonoBehaviour
         {
             while (this.logCsoundOutput)
             {
-                for (int i = 0; i < csound.GetCsoundMessageCount(); i++)
+                while (csound.GetCsoundMessageCount() > 0)
                 {
-                    if (this.logCsoundOutput)    // exiting when csound messages are very high in number 
-                    {
-                        print("CsoundUnity output: " + csound.GetCsoundMessage());
-                        yield return null;          //avoids Unity stuck on performance end
-                    }
+                    if (!this.logCsoundOutput) break;
+                    string message = csound.GetCsoundMessage();
+                    CsoundMessageLogged?.Invoke(message);
+                    print("CsoundUnity output: " + message);
+                    yield return null;          //avoids Unity stuck on performance end
                 }
                 yield return new WaitForSeconds(interval);
             }

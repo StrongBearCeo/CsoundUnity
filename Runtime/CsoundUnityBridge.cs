@@ -170,9 +170,7 @@ public class CsoundUnityBridge
             ? Csound6.NativeMethods.csoundCompileCsd(csound, csdFile)
             : Csound6.NativeMethods.csoundCompileCsdText(csound, csdFile);
 
-        const int LOG_ALL = 135;
-        const int LOG_NOTHING = 16;
-        Csound6.NativeMethods.csoundSetMessageLevel(csound, LOG_NOTHING);
+        SetMessageOutputEnabled(false);
 
         // double set to make sure -d -n are set
         Csound6.NativeMethods.csoundSetOption(csound, "-n");
@@ -241,6 +239,14 @@ public class CsoundUnityBridge
     public bool CompiledWithoutError()
     {
         return compiledOk;
+    }
+
+    public void SetMessageOutputEnabled(bool enabled)
+    {
+        const int LOG_ALL = 135;
+        const int LOG_NOTHING = 16;
+        if (csound != IntPtr.Zero)
+            Csound6.NativeMethods.csoundSetMessageLevel(csound, enabled ? LOG_ALL : LOG_NOTHING);
     }
 
     public int CompileOrc(string orchStr)
