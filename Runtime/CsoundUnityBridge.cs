@@ -109,6 +109,19 @@ public class CsoundUnityBridge
         }
     }
 
+    internal static string GetBundledWindowsOpcodeDirectory(string streamingAssetsPath)
+    {
+        if (string.IsNullOrWhiteSpace(streamingAssetsPath)) return null;
+        try
+        {
+            return Path.GetFullPath(Path.Combine(streamingAssetsPath, "CsoundOpcodes"));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Builds per-Csound-instance search paths for a CSD loaded from disk. This keeps
     /// relative package references such as ./sounds/kick.wav rooted beside the CSD
@@ -129,7 +142,10 @@ public class CsoundUnityBridge
         }
 
         if (string.IsNullOrWhiteSpace(directory)) return Array.Empty<string>();
-        string value = directory.IndexOf(' ') >= 0 ? $"\"{directory}\"" : directory;
+        // csoundSetOption receives one complete option, not a shell command line.
+        // Quoting a path with spaces therefore makes the quote characters part of
+        // INCDIR/SFDIR and prevents Csound from finding packaged includes or samples.
+        string value = directory;
         return new[]
         {
             "--default-paths",
@@ -213,11 +229,22 @@ public class CsoundUnityBridge
     /// <param name="environmentSettings">A list of the Csound Environments settings defined by the user</param>
     public CsoundUnityBridge(string csdFile, List<EnvironmentSettings> environmentSettings, bool compileFromFile = false)
     {
-        // On editor and desktop platforms, disable searching of plugins unless explicitly set using
-        // the env settings in the editor
+        // On editor and desktop platforms, avoid the machine-wide plugin directory: a
+        // system Csound installation can contain ABI-incompatible modules that crash
+        // csoundCreate. Windows builds may opt into the small, version-matched module set
+        // shipped with this app (currently signalflowgraph for ftgenonce).
         if (Application.isEditor || !Application.isMobilePlatform)
         {
-            Csound6.NativeMethods.csoundSetOpcodedir(".");
+            string opcodeDirectory = ".";
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            string bundledOpcodeDirectory = GetBundledWindowsOpcodeDirectory(Application.streamingAssetsPath);
+            if (!string.IsNullOrWhiteSpace(bundledOpcodeDirectory) &&
+                Directory.Exists(bundledOpcodeDirectory))
+            {
+                opcodeDirectory = bundledOpcodeDirectory;
+            }
+#endif
+            Csound6.NativeMethods.csoundSetOpcodedir(opcodeDirectory);
         }
 
         SetEnvironmentSettings(environmentSettings);
