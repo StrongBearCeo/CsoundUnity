@@ -27,9 +27,11 @@ THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 using UnityEngine;
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using csoundcsharp;
 using System.Collections.Generic;
+using System.Text;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using MYFLT = System.Double;
 #elif UNITY_ANDROID || UNITY_IOS
@@ -108,6 +110,101 @@ public class CsoundUnityBridge
     }
 
     /// <summary>
+    /// Builds per-Csound-instance search paths for a CSD loaded from disk. This keeps
+    /// relative package references such as ./sounds/kick.wav rooted beside the CSD
+    /// without changing the process-wide working directory.
+    /// </summary>
+    internal static string[] BuildRuntimeSearchPathOptions(string csdFile)
+    {
+        if (string.IsNullOrWhiteSpace(csdFile)) return Array.Empty<string>();
+
+        string directory;
+        try
+        {
+            directory = Path.GetDirectoryName(Path.GetFullPath(csdFile));
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+
+        if (string.IsNullOrWhiteSpace(directory)) return Array.Empty<string>();
+        string value = directory.IndexOf(' ') >= 0 ? $"\"{directory}\"" : directory;
+        return new[]
+        {
+            "--default-paths",
+            $"--env:SSDIR+={value}",
+            $"--env:SFDIR+={value}",
+            $"--env:SADIR+={value}",
+            $"--env:INCDIR+={value}",
+        };
+    }
+
+    /// <summary>
+    /// Csound treats paths beginning with a dot as explicit paths and therefore does
+    /// not consult SSDIR/SFDIR for them. Convert only those quoted path literals to
+    /// absolute paths rooted at the runtime CSD; ordinary strings remain untouched.
+    /// </summary>
+    internal static string ResolveExplicitRelativePaths(string csdText, string csdFile)
+    {
+        if (string.IsNullOrEmpty(csdText) || string.IsNullOrWhiteSpace(csdFile)) return csdText;
+        string directory = Path.GetDirectoryName(Path.GetFullPath(csdFile));
+        if (string.IsNullOrWhiteSpace(directory)) return csdText;
+
+        var builder = new StringBuilder(csdText.Length + 256);
+        int cursor = 0;
+        while (cursor < csdText.Length)
+        {
+            int quoteStart = csdText.IndexOf('"', cursor);
+            if (quoteStart < 0)
+            {
+                builder.Append(csdText, cursor, csdText.Length - cursor);
+                break;
+            }
+
+            builder.Append(csdText, cursor, quoteStart - cursor + 1);
+            int quoteEnd = quoteStart + 1;
+            while (quoteEnd < csdText.Length)
+            {
+                if (csdText[quoteEnd] == '"')
+                {
+                    int backslashes = 0;
+                    for (int i = quoteEnd - 1; i > quoteStart && csdText[i] == '\\'; i--) backslashes++;
+                    if ((backslashes & 1) == 0) break;
+                }
+                quoteEnd++;
+            }
+
+            if (quoteEnd >= csdText.Length)
+            {
+                builder.Append(csdText, quoteStart + 1, csdText.Length - quoteStart - 1);
+                break;
+            }
+
+            string value = csdText.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
+            if (IsExplicitRelativePath(value))
+            {
+                string platformPath = value.Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar);
+                value = Path.GetFullPath(Path.Combine(directory, platformPath)).Replace('\\', '/');
+            }
+            builder.Append(value).Append('"');
+            cursor = quoteEnd + 1;
+        }
+        return builder.ToString();
+    }
+
+    private static bool IsExplicitRelativePath(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        int prefixLength = value.StartsWith("../", StringComparison.Ordinal) ||
+            value.StartsWith("..\\", StringComparison.Ordinal) ? 3 :
+            value.StartsWith("./", StringComparison.Ordinal) ||
+            value.StartsWith(".\\", StringComparison.Ordinal) ? 2 : 0;
+        return prefixLength > 0 && value.Length > prefixLength && !char.IsWhiteSpace(value[prefixLength]);
+    }
+
+    /// <summary>
     /// The CsoundUnityBridge constructor sets up the Csound Global Environment Variables set by the user. 
     /// Then it creates an instance of Csound and compiles the full csdFile passed as a string.
     /// Then it starts Csound.
@@ -153,6 +250,12 @@ public class CsoundUnityBridge
         // Csound6.NativeMethods.csoundSetOption(csound, $"--control-rate={AudioSettings.outputSampleRate}");
         Csound6.NativeMethods.csoundSetOption(csound, $"--ksmps=32");
 
+        if (compileFromFile)
+        {
+            foreach (string option in BuildRuntimeSearchPathOptions(csdFile))
+                Csound6.NativeMethods.csoundSetOption(csound, option);
+        }
+
 #if UNITY_IOS
         Debug.Log($"Initialising sample rate and control rate using Audio Project Settings value: {AudioSettings.outputSampleRate}Hz, some values maybe incompatible with older hardware.");
 #endif
@@ -166,9 +269,24 @@ public class CsoundUnityBridge
         onCsoundCreated?.Invoke();
         onCsoundCreated = null;
 
-        int ret = compileFromFile
-            ? Csound6.NativeMethods.csoundCompileCsd(csound, csdFile)
-            : Csound6.NativeMethods.csoundCompileCsdText(csound, csdFile);
+        int ret;
+        if (compileFromFile)
+        {
+            try
+            {
+                string runtimeCsd = ResolveExplicitRelativePaths(File.ReadAllText(csdFile), csdFile);
+                ret = Csound6.NativeMethods.csoundCompileCsdText(csound, runtimeCsd);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Could not prepare runtime CSD paths for {csdFile}: {ex.Message}");
+                ret = Csound6.NativeMethods.csoundCompileCsd(csound, csdFile);
+            }
+        }
+        else
+        {
+            ret = Csound6.NativeMethods.csoundCompileCsdText(csound, csdFile);
+        }
 
         SetMessageOutputEnabled(false);
 
