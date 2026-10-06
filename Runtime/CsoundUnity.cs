@@ -504,7 +504,7 @@ public class CsoundUnity : MonoBehaviour
 
         AudioSettings.GetDSPBufferSize(out bufferSize, out numBuffers);
 
-        Debug.Log($"CsoundUnity Awake\n" +
+        if (logCsoundOutput) Debug.Log($"CsoundUnity Awake\n" +
             $"AudioSettings.bufferSize: {bufferSize} numBuffers: {numBuffers}");
 
         audioSource = GetComponent<AudioSource>();
@@ -567,7 +567,7 @@ public class CsoundUnity : MonoBehaviour
             {
                 zerdbfs = (float)csound.Get0dbfs();
 
-                Debug.Log($"Csound zerdbfs: {zerdbfs}");
+                if (logCsoundOutput) Debug.Log($"Csound zerdbfs: {zerdbfs}");
 
                 initialized = true;
                 OnCsoundInitialized?.Invoke();
@@ -575,11 +575,11 @@ public class CsoundUnity : MonoBehaviour
         }
         else
         {
-            Debug.Log("Error creating Csound object");
+            Debug.LogError("Error creating Csound object");
             compiledOk = false;
         }
 
-        Debug.Log($"CsoundUnity done init, compiledOk? {compiledOk}");
+        if (logCsoundOutput) Debug.Log($"CsoundUnity done init, compiledOk? {compiledOk}");
         awakeCompleted = true;
     }
 
