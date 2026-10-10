@@ -386,6 +386,34 @@ public class CsoundUnity : MonoBehaviour
     public bool IsInitialized { get => initialized; }
 
     /// <summary>
+    /// The CSD text, or the runtime CSD path when the CSD is compiled from a file.
+    /// </summary>
+    public string CsdSource => string.IsNullOrWhiteSpace(_runtimeCsdFilePath) ? _csoundString : _runtimeCsdFilePath;
+
+    /// <summary>
+    /// True when <see cref="CsdSource"/> is a path to a runtime CSD file.
+    /// </summary>
+    public bool CompilesCsdFromFile => !string.IsNullOrWhiteSpace(_runtimeCsdFilePath);
+
+    /// <summary>
+    /// Main thread only: what a worker thread needs to build this instrument's bridge.
+    /// </summary>
+    public CsoundBridgeRequest CaptureBridgeRequest() =>
+        CsoundBridgeRequest.Capture(CsdSource, environmentSettings, CompilesCsdFromFile);
+
+    /// <summary>
+    /// Main thread only: the next Awake whose CSD source equals <paramref name="csdSource"/> adopts
+    /// <paramref name="bridge"/> instead of compiling. Always pair with <see cref="EndAdoptBridge"/>.
+    /// </summary>
+    public static void BeginAdoptBridge(CsoundUnityBridge bridge, string csdSource) =>
+        CsoundBridgeAdoption.Begin(bridge, csdSource);
+
+    /// <summary>
+    /// Ends <see cref="BeginAdoptBridge"/>. Returns the bridge if no Awake took it; the caller owns it.
+    /// </summary>
+    public static CsoundUnityBridge EndAdoptBridge() => (CsoundUnityBridge)CsoundBridgeAdoption.End();
+
+    /// <summary>
     /// The delegate of the event OnCsoundInitialized
     /// </summary>
     public delegate void CsoundInitialized();
@@ -528,10 +556,9 @@ public class CsoundUnity : MonoBehaviour
         /// the CsoundUnityBridge constructor the string with the csound code and a list of the Global Environment Variables Settings.
         /// It then calls createCsound() to create an instance of Csound and compile the csd string.
         /// After this we start the performance of Csound.
-        csound = new CsoundUnityBridge(
-            string.IsNullOrWhiteSpace(_runtimeCsdFilePath) ? _csoundString : _runtimeCsdFilePath,
-            environmentSettings,
-            !string.IsNullOrWhiteSpace(_runtimeCsdFilePath));
+        // A bridge already built on a worker thread for this exact CSD (see BeginAdoptBridge) skips the compile.
+        csound = (CsoundUnityBridge)CsoundBridgeAdoption.TryTake(CsdSource) ??
+            new CsoundUnityBridge(CsdSource, environmentSettings, CompilesCsdFromFile);
         if (csound != null)
         {
             SetCsoundOutputLogging(logCsoundOutput);
@@ -569,7 +596,8 @@ public class CsoundUnity : MonoBehaviour
 
                 if (logCsoundOutput) Debug.Log($"Csound zerdbfs: {zerdbfs}");
 
-                initialized = true;
+                // OnAudioFilterRead may already be running: publish only after csound and compiledOk are set.
+                System.Threading.Volatile.Write(ref initialized, true);
                 OnCsoundInitialized?.Invoke();
             }
         }

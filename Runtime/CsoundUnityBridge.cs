@@ -47,65 +47,28 @@ public class CsoundUnityBridge
     bool compiledOk = false;
     Action onCsoundCreated;
 
-    private void SetEnvironmentSettings(List<EnvironmentSettings> environmentSettings)
-    {
-        if (environmentSettings == null || environmentSettings.Count == 0) return;
-        foreach (var env in environmentSettings)
-        {
-            if (env == null) continue;
-            var path = env.GetPath();
-            if (string.IsNullOrWhiteSpace(path)) continue;
+    // Csound's process-wide state (csoundInitialize, the instance list, the global environment and the
+    // opcode directory) is shared by every instance. Bridges may be built on a worker thread, so every
+    // build and destroy is serialized, and globals are written only when their value changes: after the
+    // first instrument, no compile can race a write to the global environment table.
+    private static readonly object s_buildLock = new object();
+    private static readonly Dictionary<string, string> s_globalEnvironment = new Dictionary<string, string>();
+    private static string s_opcodeDirectory;
 
-            switch (Application.platform)
-            {
-                case RuntimePlatform.OSXEditor:
-                case RuntimePlatform.OSXPlayer:
-                    if (env.platform.Equals(SupportedPlatform.MacOS))
-                    {
-                        Debug.Log($"Setting {env.GetTypeString()} for MacOS to: {path}");
-                        Csound6.NativeMethods.csoundSetGlobalEnv(env.GetTypeString(), path);
-                    }
-                    break;
-                case RuntimePlatform.WindowsPlayer:
-                case RuntimePlatform.WindowsEditor:
-                    if (env.platform.Equals(SupportedPlatform.Windows))
-                    {
-                        Debug.Log($"Setting {env.GetTypeString()} for Windows to: {path}");
-                        Csound6.NativeMethods.csoundSetGlobalEnv(env.GetTypeString(), path);
-                    }
-                    break;
-                case RuntimePlatform.Android:
-                    if (env.platform.Equals(SupportedPlatform.Android))
-                    {
-                        Debug.Log($"Setting {env.GetTypeString()} for Android to: {path}");
-                        Csound6.NativeMethods.csoundSetGlobalEnv(env.GetTypeString(), path);
-                        //Debug.Log($"baseFolder: {env.baseFolder}");
-                        if (env.baseFolder.Equals(EnvironmentPathOrigin.Plugins))
-                        {
-                            if (onCsoundCreated == null || onCsoundCreated.GetInvocationList().Length == 0)
-                            {
-                                onCsoundCreated += () =>
-                                {
-#if !UNITY_IOS // this is needed to avoid references to this method on iOS, where it's not supported
-                                    Debug.Log("Csound Force Loading Plugins!");
-                                    var loaded = Csound6.NativeMethods.csoundLoadPlugins(csound, path);
-                                    Debug.Log($"PLUGINS LOADED? {loaded}");
-#endif
-                                };
-                            }
-                        }
-                    }
-                    break;
-                case RuntimePlatform.IPhonePlayer:
-                    if (env.platform.Equals(SupportedPlatform.iOS))
-                    {
-                        Debug.Log($"Setting {env.GetTypeString()} for iOS to: {path}");
-                        Csound6.NativeMethods.csoundSetGlobalEnv(env.GetTypeString(), path);
-                    }
-                    break;
-                default:
-                    break;
-            }
+    private static void SetGlobalEnvironment(CsoundBridgeRequest request)
+    {
+        if (request.OpcodeDirectory != null && request.OpcodeDirectory != s_opcodeDirectory)
+        {
+            Csound6.NativeMethods.csoundSetOpcodedir(request.OpcodeDirectory);
+            s_opcodeDirectory = request.OpcodeDirectory;
+        }
+
+        foreach (var env in request.GlobalEnvironment)
+        {
+            if (s_globalEnvironment.TryGetValue(env.Key, out var current) && current == env.Value) continue;
+            Debug.Log($"Setting {env.Key} for {request.Platform} to: {env.Value}");
+            Csound6.NativeMethods.csoundSetGlobalEnv(env.Key, env.Value);
+            s_globalEnvironment[env.Key] = env.Value;
         }
     }
 
@@ -221,48 +184,41 @@ public class CsoundUnityBridge
     }
 
     /// <summary>
-    /// The CsoundUnityBridge constructor sets up the Csound Global Environment Variables set by the user. 
+    /// The CsoundUnityBridge constructor sets up the Csound Global Environment Variables set by the user.
     /// Then it creates an instance of Csound and compiles the full csdFile passed as a string.
     /// Then it starts Csound.
     /// </summary>
     /// <param name="csdFile">The Csound (.csd) file content as a string</param>
     /// <param name="environmentSettings">A list of the Csound Environments settings defined by the user</param>
     public CsoundUnityBridge(string csdFile, List<EnvironmentSettings> environmentSettings, bool compileFromFile = false)
+        : this(CsoundBridgeRequest.Capture(csdFile, environmentSettings, compileFromFile))
     {
-        // On editor and desktop platforms, avoid the machine-wide plugin directory: a
-        // system Csound installation can contain ABI-incompatible modules that crash
-        // csoundCreate. Windows builds may opt into the small, version-matched module set
-        // shipped with this app (currently signalflowgraph for ftgenonce).
-        if (Application.isEditor || !Application.isMobilePlatform)
+    }
+
+    /// <summary>
+    /// Creates, compiles and starts a Csound instance from a request captured on the main thread.
+    /// Safe on any thread: apart from Debug.Log it touches no Unity API.
+    /// </summary>
+    public CsoundUnityBridge(CsoundBridgeRequest request)
+    {
+        lock (s_buildLock)
         {
-            string opcodeDirectory = ".";
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
-            string bundledOpcodeDirectory = GetBundledWindowsOpcodeDirectory(Application.streamingAssetsPath);
-            if (!string.IsNullOrWhiteSpace(bundledOpcodeDirectory) &&
-                Directory.Exists(bundledOpcodeDirectory))
-            {
-                opcodeDirectory = bundledOpcodeDirectory;
-            }
-#endif
-            Csound6.NativeMethods.csoundSetOpcodedir(opcodeDirectory);
+            Build(request);
         }
+    }
 
-        SetEnvironmentSettings(environmentSettings);
+    private void Build(CsoundBridgeRequest request)
+    {
+        string csdFile = request.CsdSource;
+        bool compileFromFile = request.CompileFromFile;
 
-        // KEEP THIS FOR REFERENCE ;)
-        //#if (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
-        //        Csound6.NativeMethods.csoundSetGlobalEnv("OPCODE6DIR64", csoundDir);
-        //#elif UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
-        //        var opcodePath = Path.GetFullPath(Path.Combine(csoundDir, "CsoundLib64.bundle/Contents/MacOS"));
-        //        //Debug.Log($"opcodePath {opcodePath} exists? " + Directory.Exists(opcodePath));
-        //        Csound6.NativeMethods.csoundSetGlobalEnv("OPCODE6DIR64", opcodePath);
-        //#elif UNITY_ANDROID
-        //        Csound6.NativeMethods.csoundSetGlobalEnv("OPCODE6DIR64", csoundDir);
-        //#endif
+        // On editor and desktop platforms the request names an opcode directory, so Csound avoids
+        // the machine-wide plugin directory (see CsoundBridgeRequest.Capture).
+        SetGlobalEnvironment(request);
 
         Csound6.NativeMethods.csoundInitialize(1);
         csound = Csound6.NativeMethods.csoundCreate(System.IntPtr.Zero);
-        if (csound == null)
+        if (csound == IntPtr.Zero)
         {
             Debug.LogError("Couldn't create Csound!");
             return;
@@ -273,7 +229,7 @@ public class CsoundUnityBridge
 
         Csound6.NativeMethods.csoundSetOption(csound, "-n");
         Csound6.NativeMethods.csoundSetOption(csound, "-d");
-        Csound6.NativeMethods.csoundSetOption(csound, $"--sample-rate={AudioSettings.outputSampleRate}");
+        Csound6.NativeMethods.csoundSetOption(csound, $"--sample-rate={request.SampleRate}");
         // Csound6.NativeMethods.csoundSetOption(csound, $"--control-rate={AudioSettings.outputSampleRate}");
         Csound6.NativeMethods.csoundSetOption(csound, $"--ksmps=32");
 
@@ -284,7 +240,7 @@ public class CsoundUnityBridge
         }
 
 #if UNITY_IOS
-        Debug.Log($"Initialising sample rate and control rate using Audio Project Settings value: {AudioSettings.outputSampleRate}Hz, some values maybe incompatible with older hardware.");
+        Debug.Log($"Initialising sample rate and control rate using Audio Project Settings value: {request.SampleRate}Hz, some values maybe incompatible with older hardware.");
 #endif
 
         // This causes a crash in Unity >= 2021.3.28
@@ -293,6 +249,14 @@ public class CsoundUnityBridge
         //parms.sample_rate_override = AudioSettings.outputSampleRate;
         //SetParams(parms);
 
+#if !UNITY_IOS // this is needed to avoid references to this method on iOS, where it's not supported
+        if (request.PluginDirectory != null)
+        {
+            Debug.Log("Csound Force Loading Plugins!");
+            var loaded = Csound6.NativeMethods.csoundLoadPlugins(csound, request.PluginDirectory);
+            Debug.Log($"PLUGINS LOADED? {loaded}");
+        }
+#endif
         onCsoundCreated?.Invoke();
         onCsoundCreated = null;
 
@@ -324,7 +288,7 @@ public class CsoundUnityBridge
         Csound6.NativeMethods.csoundStart(csound);
 
         Debug.Log($"Csound created and started.\n" +
-            $"AudioSettings.outputSampleRate: {AudioSettings.outputSampleRate}\n" +
+            $"AudioSettings.outputSampleRate: {request.SampleRate}\n" +
             $"GetSr: {GetSr()}\n" +
             $"GetKr: {GetKr()}\n" +
             $"Get0dbfs: {Get0dbfs()}\n" +
@@ -336,6 +300,22 @@ public class CsoundUnityBridge
         //Debug.Log($"PerformKsmps: {res}");
         compiledOk = ret == 0 ? true : false;
         //Debug.Log($"CsoundCompile: {compiledOk}");
+    }
+
+    /// <summary>
+    /// Frees an instance that no CsoundUnity adopted. Only for bridges the audio thread never saw:
+    /// an instance in use by OnAudioFilterRead must not be destroyed here.
+    /// </summary>
+    public void Destroy()
+    {
+        lock (s_buildLock)
+        {
+            if (csound == IntPtr.Zero) return;
+            Csound6.NativeMethods.csoundDestroyMessageBuffer(csound);
+            Csound6.NativeMethods.csoundDestroy(csound);
+            csound = IntPtr.Zero;
+            compiledOk = false;
+        }
     }
 
     #region Instantiation
@@ -1085,5 +1065,128 @@ public class CsoundUnityBridge
     internal static String CharPtr2String(IntPtr pString)
     {
         return ((pString != null) && (pString != IntPtr.Zero)) ? Marshal.PtrToStringAnsi(pString) : string.Empty;
+    }
+}
+
+/// <summary>
+/// Everything a <see cref="CsoundUnityBridge"/> needs from Unity, read on the main thread so the native
+/// create/compile/start can run on a worker thread.
+/// </summary>
+public sealed class CsoundBridgeRequest
+{
+    public string CsdSource { get; private set; }
+    public bool CompileFromFile { get; private set; }
+    internal int SampleRate;
+    internal RuntimePlatform Platform;
+    /// <summary>Null on device: Csound keeps its default opcode directory.</summary>
+    internal string OpcodeDirectory;
+    internal KeyValuePair<string, string>[] GlobalEnvironment = Array.Empty<KeyValuePair<string, string>>();
+    /// <summary>Android plugin folder to force-load after csoundCreate, or null.</summary>
+    internal string PluginDirectory;
+
+    /// <summary>Main thread only: reads AudioSettings, Application paths and EnvironmentSettings paths.</summary>
+    public static CsoundBridgeRequest Capture(string csdSource, List<EnvironmentSettings> environmentSettings,
+        bool compileFromFile)
+    {
+        var request = new CsoundBridgeRequest
+        {
+            CsdSource = csdSource,
+            CompileFromFile = compileFromFile,
+            SampleRate = AudioSettings.outputSampleRate,
+            Platform = Application.platform,
+        };
+
+        // On editor and desktop platforms, avoid the machine-wide plugin directory: a
+        // system Csound installation can contain ABI-incompatible modules that crash
+        // csoundCreate. Windows builds may opt into the small, version-matched module set
+        // shipped with this app (currently signalflowgraph for ftgenonce).
+        if (Application.isEditor || !Application.isMobilePlatform)
+        {
+            string opcodeDirectory = ".";
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            string bundledOpcodeDirectory =
+                CsoundUnityBridge.GetBundledWindowsOpcodeDirectory(Application.streamingAssetsPath);
+            if (!string.IsNullOrWhiteSpace(bundledOpcodeDirectory) &&
+                Directory.Exists(bundledOpcodeDirectory))
+            {
+                opcodeDirectory = bundledOpcodeDirectory;
+            }
+#endif
+            request.OpcodeDirectory = opcodeDirectory;
+        }
+
+        if (environmentSettings == null || environmentSettings.Count == 0) return request;
+        SupportedPlatform? current = CurrentPlatform(request.Platform);
+        if (current == null) return request;
+
+        var environment = new List<KeyValuePair<string, string>>();
+        foreach (var env in environmentSettings)
+        {
+            if (env == null || !env.platform.Equals(current.Value)) continue;
+            var path = env.GetPath();
+            if (string.IsNullOrWhiteSpace(path)) continue;
+            environment.Add(new KeyValuePair<string, string>(env.GetTypeString(), path));
+            if (current.Value == SupportedPlatform.Android && request.PluginDirectory == null &&
+                env.baseFolder.Equals(EnvironmentPathOrigin.Plugins))
+            {
+                request.PluginDirectory = path;
+            }
+        }
+        request.GlobalEnvironment = environment.ToArray();
+        return request;
+    }
+
+    private static SupportedPlatform? CurrentPlatform(RuntimePlatform platform)
+    {
+        switch (platform)
+        {
+            case RuntimePlatform.OSXEditor:
+            case RuntimePlatform.OSXPlayer:
+                return SupportedPlatform.MacOS;
+            case RuntimePlatform.WindowsPlayer:
+            case RuntimePlatform.WindowsEditor:
+                return SupportedPlatform.Windows;
+            case RuntimePlatform.Android:
+                return SupportedPlatform.Android;
+            case RuntimePlatform.IPhonePlayer:
+                return SupportedPlatform.iOS;
+            default:
+                return null;
+        }
+    }
+}
+
+/// <summary>
+/// Main-thread hand-over of a pre-built bridge to the next <see cref="CsoundUnity"/> Awake with the
+/// same CSD source, so instruments compiled on a worker thread skip the synchronous compile.
+/// </summary>
+internal static class CsoundBridgeAdoption
+{
+    private static object s_bridge;
+    private static string s_source;
+
+    internal static void Begin(object bridge, string csdSource)
+    {
+        s_bridge = bridge;
+        s_source = csdSource;
+    }
+
+    /// <summary>The waiting bridge if it was built from this source; it is handed over once.</summary>
+    internal static object TryTake(string csdSource)
+    {
+        if (s_bridge == null || !string.Equals(s_source, csdSource, StringComparison.Ordinal)) return null;
+        object bridge = s_bridge;
+        s_bridge = null;
+        s_source = null;
+        return bridge;
+    }
+
+    /// <summary>Clears the slot; returns a bridge nobody took so the caller can destroy it.</summary>
+    internal static object End()
+    {
+        object untaken = s_bridge;
+        s_bridge = null;
+        s_source = null;
+        return untaken;
     }
 }
